@@ -68,7 +68,8 @@ The binary is static Go for 32-bit little-endian MIPS (soft float), built with
 - [q2-subsonic](https://github.com/andsuor/q2-subsonic) by andsuor (MIT): the launcher, build and
   packaging scripts, Q2SPOT/1 framing and the QR encoder.
 - [Tailscale](https://github.com/tailscale/tailscale) (BSD-3-Clause).
-- DiamondBond and the Q2 Pod community.
+- [Q2 Pod](https://github.com/DiamondBond/q2-pod), the firmware this app runs on, by
+  [DiamondBond](https://github.com/DiamondBond) and the Q2 Pod community.
 
 See `NOTICE` and, in a release, `LICENSES.txt` for every licence in the binary.
 
