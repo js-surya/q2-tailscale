@@ -1,6 +1,6 @@
 // Command q2-tailscale puts a Shanling Q2 running Q2 Pod on its owner's tailnet, as a card app: MagicDNS
 // names and Tailscale IPs reach the tailnet's machines from any other card app on the Q2.
-// See docs/superpowers/specs/2026-11-21-tailscale-card-app-design.md.
+// See README.md.
 package main
 
 import (
