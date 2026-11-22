@@ -22,8 +22,8 @@ type Where struct {
 }
 
 // Place picks the keys' file between the card's state folder and flash, the app's own folder in the
-// Q2's internal storage, <data>/apps/<id> (Q2 Pod's convention, which the App Store's Remove
-// deletes). Not on a Q2 (no <data>) the card keeps them. On a Q2 flash takes them, made only root
+// Q2's internal storage, <data>/apps/<id> (the app deletes it itself after the App Store's Remove:
+// startRemoveWatch). Not on a Q2 (no <data>) the card keeps them. On a Q2 flash takes them, made only root
 // can read: a login found first in an older flash folder, else on the card, is moved there, written
 // whole and read back before the old copy goes; copies left elsewhere once flash has them go too. An
 // error leaves them where they were.

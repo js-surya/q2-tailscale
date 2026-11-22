@@ -77,6 +77,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	} else if where.Moved {
 		logf("login moved to %s", where.Path)
 	}
+	if where.Path == filepath.Join(*keysDir, keystore.File) { // a Remove takes the login too
+		go func() {
+			<-ctx.Done() // at the TERM itself: the launcher KILLs the app 2 s on
+			if !again.Load() {
+				startRemoveWatch(*dir, *keysDir, logf)
+			}
+		}()
+	}
 	keys, err := store.NewFileStore(logf, where.Path)
 	if err != nil {
 		logf("login store: %v", err)
