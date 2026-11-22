@@ -43,6 +43,19 @@ func TestNeedsLoginCarriesURL(t *testing.T) {
 	}
 }
 
+func TestSelfIsTheTailnetNameAfterARenameInTheConsole(t *testing.T) {
+	for _, c := range []struct{ host, dns, want string }{
+		{"q2-pod", "aw-pod.tail1234.ts.net.", "aw-pod"}, // renamed in the admin console
+		{"q2-pod", "Q2-Pod.tail1234.ts.net.", "q2-pod"}, // as MagicDNS has it, lower case
+		{"q2-pod", "", "q2-pod"},                        // no tailnet name yet: its own
+	} {
+		got := FromIPN(&ipnstate.Status{BackendState: "Running", Self: &ipnstate.PeerStatus{HostName: c.host, DNSName: c.dns}})
+		if got.Self != c.want {
+			t.Errorf("HostName %q DNSName %q: Self %q, want %q", c.host, c.dns, got.Self, c.want)
+		}
+	}
+}
+
 func TestNilStatus(t *testing.T) {
 	if got := FromIPN(nil); got.State != "Starting" {
 		t.Fatalf("got %+v", got)

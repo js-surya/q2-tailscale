@@ -130,7 +130,12 @@ func FromIPN(st *ipnstate.Status) Status {
 	}
 	out := Status{State: st.BackendState, AuthURL: st.AuthURL}
 	if st.Self != nil {
-		out.Self = st.Self.HostName
+		// its name on the tailnet, as MagicDNS has it (a rename in the admin console shows here),
+		// else, before it has one, its own
+		out.Self, _, _ = strings.Cut(strings.ToLower(strings.TrimSuffix(st.Self.DNSName, ".")), ".")
+		if out.Self == "" {
+			out.Self = st.Self.HostName
+		}
 		out.SelfIP = ipv4(st.Self.TailscaleIPs)
 	}
 	if st.CurrentTailnet != nil {
