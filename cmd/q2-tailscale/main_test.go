@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -71,5 +72,43 @@ func TestRestartRunsItselfAgain(t *testing.T) {
 		[]string{"q2-tailscale", "-dir", "/mnt/mmc/.tailscale"})
 	if err != nil || got != "/mnt/mmc/.tailscale/q2-tailscale" || len(gotArgs) != 3 || gotArgs[2] != "/mnt/mmc/.tailscale" {
 		t.Fatalf("%v %q %q", err, got, gotArgs)
+	}
+}
+
+// Tailscale's debug lines ([v1], [v2], after any "name: " prefixes) stay out of the log unless asked
+// for; everything else is kept.
+func TestDebugLinesLeftOut(t *testing.T) {
+	var got []string
+	logf := func(format string, args ...any) { got = append(got, fmt.Sprintf(format, args...)) }
+	quiet := dropDebug(logf)
+	for _, l := range []string{
+		"[v1] using fake (no-op) tun device",
+		"wg: [v2] Routine: receive incoming receiveDERP - stopped",
+		"magicsock: [v1] derp-1 does not know about peer, removing",
+	} {
+		quiet("%s", l)
+	}
+	keep := []string{
+		"magicsock: derp-1 connected",
+		"health(warnable=warming-up): error: Tailscale is starting. Please wait.",
+		"[unexpected] something odd",
+		"peer [v1] in the middle stays",
+	}
+	for _, l := range keep {
+		quiet("%s", l)
+	}
+	quiet("[v%d] formatted %s", 1, "too")
+	if strings.Join(got, "\n") != strings.Join(keep, "\n") {
+		t.Fatalf("logged:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+func TestDebugFlagKeepsThem(t *testing.T) {
+	var got []string
+	logf := func(format string, args ...any) { got = append(got, fmt.Sprintf(format, args...)) }
+	tailscaleLogf(logf, true)("[v1] kept")
+	tailscaleLogf(logf, false)("[v1] dropped")
+	if len(got) != 1 || got[0] != "[v1] kept" {
+		t.Fatalf("logged %q", got)
 	}
 }

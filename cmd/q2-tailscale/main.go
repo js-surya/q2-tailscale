@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -48,6 +49,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	dns := fs.String("dns", "127.0.0.1:53", "where the name server listens")
 	keysDir := fs.String("keys", "/mnt/data/apps/tailscale", "the Q2's internal storage for the login (keystore)")
 	logPath := fs.String("log", "/tmp/q2-tailscale.log", "the log, capped at 256 KiB (one older copy kept)")
+	tsDebug := fs.Bool("debug", false, "keep Tailscale's debug lines ([v1], [v2]) in the log")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -91,7 +93,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	n := node.NewTSNet(stateDir, settings.Hostname, keys, logf)
+	n := node.NewTSNet(stateDir, settings.Hostname, keys, tailscaleLogf(logf, *tsDebug))
 	a := &app.App{Node: n, Loop: &loopback.Manager{}, Relay: &relay.Relay{Dial: n.Dial}, Dir: *dir,
 		ResolvPath: *resolv, StatePath: *statePath, DNSAddr: *dns, Logf: logf}
 	if keysErr != nil && where.Path != filepath.Join(*keysDir, keystore.File) {
@@ -152,6 +154,34 @@ func tuneMemory(getenv func(string) string, setGC func(int) int, setLimit func(i
 	}
 	if getenv("GOMEMLIMIT") == "" {
 		setLimit(16 << 20)
+	}
+}
+
+// tailscaleLogf is the logf Tailscale gets: its debug lines left out (dropDebug) unless debug.
+func tailscaleLogf(logf func(string, ...any), debug bool) func(string, ...any) {
+	if debug {
+		return logf
+	}
+	return dropDebug(logf)
+}
+
+// dropDebug passes on what Tailscale logs but its debug lines: those whose text, past any "name: "
+// prefixes (wg: , magicsock: ), starts [v1] or [v2]. About 250 lines an hour on the Q2, each a wake
+// and a write, and they bury the lines that matter.
+func dropDebug(logf func(string, ...any)) func(string, ...any) {
+	return func(format string, args ...any) {
+		s := fmt.Sprintf(format, args...)
+		for {
+			if strings.HasPrefix(s, "[v1] ") || strings.HasPrefix(s, "[v2] ") {
+				return
+			}
+			name, rest, ok := strings.Cut(s, ": ")
+			if !ok || name == "" || strings.ContainsAny(name, " []") {
+				break
+			}
+			s = rest
+		}
+		logf("%s", fmt.Sprintf(format, args...))
 	}
 }
 
