@@ -46,9 +46,10 @@ clears both in any case.
 
 ## Install
 
+**Requires Q2 Pod 1.9.0 or later.**
+
 From the Q2: **System settings → App Store**. Or unzip a release's `q2-tailscale-vX.Y-SHA.zip` at the
-root of the card. The app's row is in **System settings → Network** (on Q2 Pod before Network rows for
-card apps, it is on Streaming).
+root of the card. The app's row is in **System settings → Network**.
 
 ## Build
 
