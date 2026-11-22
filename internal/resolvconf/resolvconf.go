@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+	"time"
 )
 
 // Mark ends every line this package writes.
@@ -76,10 +77,16 @@ func Apply(path, suffix string) error {
 	return err
 }
 
+// settle is how long the file must have gone unchanged before it is read for a rewrite: udhcpc's
+// default.script empties it and then appends a line at a time, and a rewrite from a read in between
+// would lose the lines still to come.
+var settle = 150 * time.Millisecond
+
 // ApplyChanged is Apply, writing only when the file isn't already as it should be; changed says
-// whether it wrote.
+// whether it wrote. It reads a settled file: one unchanged for settle, and unchanged across the read
+// (a writer emptying it between a look and the read would leave a read of nothing).
 func ApplyChanged(path, suffix string) (changed bool, err error) {
-	old, err := os.ReadFile(path)
+	old, err := settled(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return false, err
 	}
@@ -88,6 +95,32 @@ func ApplyChanged(path, suffix string) (changed bool, err error) {
 		return false, nil
 	}
 	return true, write(path, want)
+}
+
+// settled reads path once it has gone settle unchanged and didn't change while being read; a writer
+// that never stops gets a read anyway, a second and a half on.
+func settled(path string) ([]byte, error) {
+	var b []byte
+	var err error
+	for i := 0; i < 10; i++ {
+		before, serr := os.Stat(path)
+		if serr != nil {
+			return os.ReadFile(path)
+		}
+		if age := time.Since(before.ModTime()); age >= 0 && age < settle {
+			time.Sleep(settle - age)
+			continue
+		}
+		b, err = os.ReadFile(path)
+		after, serr := os.Stat(path)
+		if err == nil && serr == nil && after.ModTime().Equal(before.ModTime()) && after.Size() == int64(len(b)) {
+			return b, nil
+		}
+	}
+	if b == nil && err == nil {
+		b, err = os.ReadFile(path)
+	}
+	return b, err
 }
 
 // Restore takes our lines out of the file at path; a missing file is left missing.

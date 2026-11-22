@@ -35,7 +35,7 @@ type Relayer interface {
 
 // App is the running app. Dir is the card folder (settings, forwards.txt); ResolvPath /etc/resolv.conf;
 // StatePath Q2 Pod's status file (/tmp/q2-tailscale.state); DNSAddr where the name server listens
-// (127.0.0.1:53). Every is the re-check period (3 s if 0).
+// (127.0.0.1:53). Every is the re-check period (10 s if 0).
 type App struct {
 	Node                                node.Node
 	Loop                                *loopback.Manager
@@ -54,6 +54,7 @@ type App struct {
 	// set at a stop, keeps a reconcile still running from writing them again.
 	out      sync.Mutex
 	stopping bool
+	wrote    string // the status file as last written: a check-up that finds the same leaves it
 
 	failing map[string]bool // the listen and lo errors of the last reconcile, logged when they first came
 
@@ -186,9 +187,11 @@ func (a *App) Reconcile() {
 		state = "bar=on\n"
 	}
 	a.out.Lock()
-	if !a.stopping {
+	if !a.stopping && state != a.wrote { // written when it changes, not every check-up
 		if err := writeWhole(a.StatePath, state); err != nil {
 			a.logf("status file: %v", err)
+		} else {
+			a.wrote = state
 		}
 	}
 	a.out.Unlock()
@@ -386,7 +389,7 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	every := a.Every
 	if every == 0 {
-		every = 3 * time.Second
+		every = 10 * time.Second
 	}
 	tick := time.NewTicker(every)
 	defer tick.Stop()

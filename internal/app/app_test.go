@@ -605,3 +605,23 @@ func TestStartWithLogsOnTurnsTailscaleOn(t *testing.T) {
 		t.Fatalf("wants %v", w.node.wants)
 	}
 }
+
+// The status file is written when what it says changes, not on every check-up: a check-up that finds the
+// same leaves it alone.
+func TestStatusFileWrittenOnlyWhenItChanges(t *testing.T) {
+	w := newWorld(t, running(nas))
+	w.app.Reconcile()
+	path := filepath.Join(w.dir, "q2-tailscale.state")
+	old := time.Unix(1e9, 0)
+	os.Chtimes(path, old, old)
+	w.app.Reconcile()
+	if fi, err := os.Stat(path); err != nil || !fi.ModTime().Equal(old) {
+		t.Fatalf("rewritten unchanged: %v %v", fi.ModTime(), err)
+	}
+	w.node.set(node.Status{State: "NeedsLogin", AuthURL: "https://login.tailscale.com/a/abc"})
+	<-w.node.up
+	w.app.Reconcile()
+	if fi, _ := os.Stat(path); fi.ModTime().Equal(old) {
+		t.Fatal("a change not written")
+	}
+}

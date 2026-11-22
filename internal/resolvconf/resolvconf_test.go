@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 const udhcpc = "nameserver 192.168.1.1 # wlan0\nnameserver 8.8.4.4 # wlan0\n"
@@ -120,5 +121,29 @@ func TestApplyUnchangedWritesNothing(t *testing.T) {
 	fi2, _ := os.Stat(p)
 	if err != nil || changed || !fi2.ModTime().Equal(fi1.ModTime()) {
 		t.Fatalf("changed %v err %v", changed, err)
+	}
+}
+
+// A DHCP client writes the file in steps (emptied, then a line at a time, as udhcpc's default.script
+// does): read mid-way, the rest would be lost when our lines go back on. A file changed within the
+// settle time is read again once it has settled.
+func TestAFileStillBeingWrittenIsReadOnceSettled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "resolv.conf")
+	os.WriteFile(path, nil, 0o644) // emptied
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		f, _ := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o644)
+		f.WriteString("nameserver 10.0.0.1 # wlan0\n")
+		time.Sleep(30 * time.Millisecond)
+		f.WriteString("nameserver 10.0.0.2 # wlan0\n")
+		f.Close()
+	}()
+	if _, err := ApplyChanged(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	b, _ := os.ReadFile(path)
+	if got := string(b); got != "nameserver 127.0.0.1"+Mark+"\nnameserver 10.0.0.1 # wlan0\nnameserver 10.0.0.2 # wlan0\n" {
+		t.Fatalf("%q", got)
 	}
 }

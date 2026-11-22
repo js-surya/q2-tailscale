@@ -205,7 +205,8 @@ func (n *TSNet) Dial(ctx context.Context, network, addr string) (net.Conn, error
 }
 
 // Start starts tsnet (which, without a saved login, asks for a sign-in link itself) and follows its
-// state: each change refreshes Status and signals Updates.
+// state: its changes refresh Status and signal Updates, at most once every 2 s (throttle), and the
+// engine's statistics alone not at all.
 func (n *TSNet) Start(ctx context.Context) error {
 	if err := n.srv.Start(); err != nil {
 		return err
@@ -214,6 +215,7 @@ func (n *TSNet) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	th := newThrottle(2*time.Second, func() { n.refresh(ctx) })
 	go func() {
 		for ctx.Err() == nil {
 			w, err := lc.WatchIPNBus(ctx, ipn.NotifyInitialState|ipn.NotifyInitialHealthState)
@@ -232,7 +234,9 @@ func (n *TSNet) Start(ctx context.Context) error {
 					n.logsRequired = LogsRequired(msg.Health)
 					n.mu.Unlock()
 				}
-				n.refresh(ctx)
+				if !statsOnly(msg) {
+					th.kick()
+				}
 			}
 			w.Close()
 		}
