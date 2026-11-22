@@ -5,6 +5,10 @@ It puts the Q2 on your tailnet, so the other apps on the Q2 (a Subsonic or Jelly
 browser, …) reach your machines by their MagicDNS names and Tailscale IPs: your home music server
 from anywhere, with nothing opened to the internet.
 
+| System settings → Network | The app's page | Settings |
+|---|---|---|
+| ![Tailscale's row in System settings → Network](docs/images/network.png) | ![The app's page: connected, the machines on the tailnet, forwards](docs/images/page.png) | ![Settings: Start with Wi-Fi, Send Logs to Tailscale, Save To](docs/images/settings.png) |
+
 Not an official Tailscale app. "Tailscale" is a trademark of Tailscale Inc.; this project is not
 affiliated with or endorsed by Tailscale.
 
