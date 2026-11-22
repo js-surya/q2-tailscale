@@ -28,15 +28,51 @@ affiliated with or endorsed by Tailscale.
 - **Status bar icon:** connected, off or warning.
 - **Follows Wi-Fi:** starts when Wi-Fi connects, stops when it goes (or only when you open it).
 
-## Where your login is kept
+## Security
 
-The node's keys are kept in the Q2's internal storage (`/mnt/data/apps/tailscale`), readable only by
-root, not on the card: a card taken out or copied holds no way into your tailnet. Removing the app with
-the App Store deletes them too (the app does it itself, within a minute of being removed while it runs);
-**Sign Out** on the app's page also ends the login.
+> [!IMPORTANT]
+> **Update to q2-v0.3 or later.** Up to q2-v0.2, a device on the same Wi-Fi as the Q2 (a laptop on a
+> café or hotel network, say) could send traffic for your machines' Tailscale IPs to the Q2 and reach
+> them through it, as the Q2. q2-v0.3 relays only connections that come from the Q2 itself.
 
-Tailscale's own logs are off unless you turn on **Send Logs to Tailscale** in Settings. A tailnet that
-requires logs (network flow logs) won't connect without it; the page says so.
+### What it protects
+
+- **Your login stays off the card.** The node's keys are in the Q2's internal storage
+  (`/mnt/data/apps/tailscale`), readable only by root. A card taken out, copied, or opened over USB or
+  Wi-Fi transfer holds no way into your tailnet.
+- **Nothing is opened to the local network.** The name server and your forwards listen on `127.0.0.1`
+  only, and your machines' Tailscale IPs answer only programs on the Q2.
+- **Nothing is served to your tailnet** but Taildrop, which takes files only from your own devices.
+- **No logs leave the Q2** unless you turn on **Send Logs to Tailscale** in Settings. A tailnet that
+  requires logs (network flow logs) won't connect without it; the page says so. The app's own log is in
+  RAM (`/tmp/q2-tailscale.log`) and is gone at reboot.
+- **Removing the app** with the App Store deletes the login too (the app does it itself, within a minute
+  of being removed while it runs). **Sign Out** on the app's page ends the login as well.
+
+### What it can't protect
+
+- **Every card app on the Q2 runs as root.** Any other app you install could read Tailscale's login. Only
+  install apps you trust.
+- **What's on the card:** the app's settings, Taildrop's folder, and a cache of your tailnet's map (your
+  machines' names and Tailscale IPs, DNS settings and access rules), with no keys. Anyone with the card
+  can read that.
+- **The Q2 reaches whatever your tailnet allows it to.** Any app on the Q2 can reach your machines'
+  services through Tailscale.
+- **A lost or stolen Q2 stays on your tailnet** until you remove it, or until its key expires and it needs
+  a new sign-in.
+
+### Suggestions
+
+- **Lost or stolen Q2:** remove it in the [Tailscale admin console](https://login.tailscale.com/admin/machines)
+  (Machines → the Q2 → Remove).
+- **Limit what the Q2 can reach** with Tailscale's access rules: allow the Q2's Tailscale IP only your
+  music server's port, such as Navidrome's 4533 or Jellyfin's 8096. (A tag would do it too, but a tagged
+  Q2 no longer receives Taildrop from your devices.)
+- **Keep key expiry on** for the Q2. Signing in again is a QR code scan.
+- **Update the app** when the App Store offers an update.
+- **Report a security problem** privately through this repository's
+  [Security tab](https://github.com/js-surya/q2-tailscale/security/advisories/new), not in a public
+  issue.
 
 ## Battery
 
