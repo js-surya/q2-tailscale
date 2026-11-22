@@ -17,7 +17,7 @@ func q2(t *testing.T) (card, flash string) {
 			t.Fatal(err)
 		}
 	}
-	return card, filepath.Join(data, "q2-tailscale")
+	return card, filepath.Join(data, "apps", "tailscale")
 }
 
 func write(t *testing.T, path, s string) {
@@ -31,7 +31,7 @@ func exists(path string) bool { _, err := os.Stat(path); return err == nil }
 
 func TestNotAQ2KeepsItOnTheCard(t *testing.T) {
 	card := t.TempDir()
-	got, err := Place(card, filepath.Join(t.TempDir(), "missing", "q2-tailscale"))
+	got, err := Place(card, filepath.Join(t.TempDir(), "missing", "apps", "tailscale"))
 	if err != nil || got.Path != filepath.Join(card, File) || got.Moved {
 		t.Fatalf("got %+v, %v", got, err)
 	}
@@ -105,7 +105,7 @@ func TestUnwritableFlashKeepsTheCardsLoginAndSaysSo(t *testing.T) {
 	}
 	card, flash := q2(t)
 	write(t, filepath.Join(card, File), "keys")
-	data := filepath.Dir(flash)
+	data := filepath.Dir(filepath.Dir(flash)) // /mnt/data: no apps/ can be made in it
 	if err := os.Chmod(data, 0o500); err != nil {
 		t.Fatal(err)
 	}
@@ -116,5 +116,21 @@ func TestUnwritableFlashKeepsTheCardsLoginAndSaysSo(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(got.Path); string(b) != "keys" {
 		t.Fatalf("card lost its keys: %q", b)
+	}
+}
+
+func TestAnOlderFlashFolderMovesToTheNewOneAndGoes(t *testing.T) {
+	card, flash := q2(t)
+	older := filepath.Join(filepath.Dir(filepath.Dir(flash)), "q2-tailscale")
+	if err := os.MkdirAll(older, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(older, File), "keys")
+	got, err := Place(card, flash, older)
+	if err != nil || got.Path != filepath.Join(flash, File) || !got.Moved {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if b, _ := os.ReadFile(got.Path); string(b) != "keys" || exists(older) {
+		t.Fatalf("flash %q, older folder left: %v", b, exists(older))
 	}
 }

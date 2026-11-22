@@ -21,15 +21,17 @@ type Where struct {
 	Moved bool
 }
 
-// Place picks the keys' file between the card's state folder and flash, a folder in the Q2's
-// internal flash. Not on a Q2 (flash's parent missing) the card keeps them. On a Q2 flash takes them,
-// made only root can read, a card copy moved there first; a copy left on the card once flash has
-// them goes. An error leaves them on the card: flash couldn't be made, written or read back.
-func Place(card, flash string) (Where, error) {
+// Place picks the keys' file between the card's state folder and flash, the app's own folder in the
+// Q2's internal storage, <data>/apps/<id> (Q2 Pod's convention, which the App Store's Remove
+// deletes). Not on a Q2 (no <data>) the card keeps them. On a Q2 flash takes them, made only root
+// can read: a login found first in an older flash folder, else on the card, is moved there, written
+// whole and read back before the old copy goes; copies left elsewhere once flash has them go too. An
+// error leaves them where they were.
+func Place(card, flash string, older ...string) (Where, error) {
 	cardFile, flashFile := filepath.Join(card, File), filepath.Join(flash, File)
 	onCard := Where{Path: cardFile}
-	if _, err := os.Stat(filepath.Dir(flash)); err != nil {
-		return onCard, nil // no internal flash here: not a Q2
+	if _, err := os.Stat(filepath.Dir(filepath.Dir(flash))); err != nil {
+		return onCard, nil // no internal storage here: not a Q2
 	}
 	if err := os.MkdirAll(flash, 0o700); err != nil {
 		return onCard, fmt.Errorf("internal storage: %w", err)
@@ -37,32 +39,50 @@ func Place(card, flash string) (Where, error) {
 	if err := os.Chmod(flash, 0o700); err != nil {
 		return onCard, fmt.Errorf("internal storage: %w", err)
 	}
+	from := make([]string, 0, len(older)+1) // where a login may be, newest place first
+	for _, o := range older {
+		from = append(from, filepath.Join(o, File))
+	}
+	from = append(from, cardFile)
+	gone := func() { // the copies from before the move: flash's is the one in use
+		for _, f := range from {
+			os.Remove(f)
+		}
+		for _, o := range older {
+			os.Remove(o) // only once empty
+		}
+	}
 	if fi, err := os.Stat(flashFile); err == nil && fi.Size() > 0 {
-		os.Remove(cardFile) // a copy from before the move: the flash's is the one in use
+		gone()
 		return Where{Path: flashFile}, nil
 	}
-	keys, err := os.ReadFile(cardFile)
-	if errors.Is(err, os.ErrNotExist) {
-		if err := probe(flash); err != nil {
-			return onCard, fmt.Errorf("internal storage: %w", err)
+	for i, f := range from {
+		keys, err := os.ReadFile(f)
+		if errors.Is(err, os.ErrNotExist) || (err == nil && len(keys) == 0) {
+			continue
 		}
-		return Where{Path: flashFile}, nil // not signed in yet: it starts in flash
+		stay := Where{Path: f}
+		if err != nil {
+			return stay, err
+		}
+		if err := writeWhole(flashFile, keys); err != nil {
+			os.Remove(flashFile)
+			return stay, fmt.Errorf("internal storage: %w", err)
+		}
+		if back, err := os.ReadFile(flashFile); err != nil || !bytes.Equal(back, keys) {
+			os.Remove(flashFile)
+			return stay, errors.New("internal storage: the keys read back differently")
+		}
+		gone()
+		if _, err := os.Stat(from[i]); err == nil {
+			return Where{Path: flashFile, Moved: true}, fmt.Errorf("the old copy stayed: %s", from[i])
+		}
+		return Where{Path: flashFile, Moved: true}, nil
 	}
-	if err != nil {
-		return onCard, err
-	}
-	if err := writeWhole(flashFile, keys); err != nil {
-		os.Remove(flashFile)
+	if err := probe(flash); err != nil {
 		return onCard, fmt.Errorf("internal storage: %w", err)
 	}
-	if back, err := os.ReadFile(flashFile); err != nil || !bytes.Equal(back, keys) {
-		os.Remove(flashFile)
-		return onCard, errors.New("internal storage: the keys read back differently")
-	}
-	if err := os.Remove(cardFile); err != nil {
-		return Where{Path: flashFile, Moved: true}, fmt.Errorf("the card's copy stayed: %w", err)
-	}
-	return Where{Path: flashFile, Moved: true}, nil
+	return Where{Path: flashFile}, nil // not signed in yet: it starts in flash
 }
 
 // writeWhole writes path through a temporary file, synced, then renamed over it.

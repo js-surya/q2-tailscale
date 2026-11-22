@@ -43,7 +43,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	statePath := fs.String("state", "/tmp/q2-tailscale.state", "Q2 Pod's status file for the app")
 	resolv := fs.String("resolv", "/etc/resolv.conf", "the resolver configuration to put our name server in")
 	dns := fs.String("dns", "127.0.0.1:53", "where the name server listens")
-	keysDir := fs.String("keys", "/mnt/data/q2-tailscale", "the Q2's internal storage for the login (keystore)")
+	keysDir := fs.String("keys", "/mnt/data/apps/tailscale", "the Q2's internal storage for the login (keystore)")
 	logPath := fs.String("log", "/tmp/q2-tailscale.log", "the log, capped at 256 KiB (one older copy kept)")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	if err := fs.Parse(args); err != nil {
@@ -65,7 +65,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		logf("state folder: %v", err)
 	}
-	where, keysErr := keystore.Place(stateDir, *keysDir)
+	where, keysErr := keystore.Place(stateDir, *keysDir, filepath.Join(filepath.Dir(filepath.Dir(*keysDir)), "q2-tailscale"))
 	if keysErr != nil {
 		logf("login: %v", keysErr)
 	} else if where.Moved {
