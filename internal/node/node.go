@@ -169,10 +169,11 @@ type TSNet struct {
 
 // NewTSNet is a node keeping its identity in stateDir (on the card: the same device across restarts),
 // named hostname, logging to logf.
-func NewTSNet(stateDir, hostname string, logf func(string, ...any)) *TSNet {
+func NewTSNet(stateDir, hostname string, keys ipn.StateStore, logf func(string, ...any)) *TSNet {
 	return &TSNet{
-		dir:     stateDir,
-		srv:     &tsnet.Server{Dir: stateDir, Hostname: hostname, Ephemeral: false, Logf: logf, UserLogf: logf},
+		dir: stateDir,
+		srv: &tsnet.Server{Dir: stateDir, Store: keys, Hostname: hostname, Ephemeral: false, Logf: logf,
+			UserLogf: logf},
 		updates: make(chan struct{}, 1),
 		st:      Status{State: "Starting"},
 	}

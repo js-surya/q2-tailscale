@@ -43,6 +43,8 @@ type App struct {
 	Dir, ResolvPath, StatePath, DNSAddr string
 	Every                               time.Duration
 	Logf                                func(string, ...any)
+	// KeysOnCard: why the login stayed on the SD card (keystore.Place), shown as a warning; nil in flash
+	KeysOnCard error
 
 	mu       sync.Mutex
 	st       node.Status
@@ -297,6 +299,10 @@ func (a *App) Warnings() []node.Warning {
 	ws := slices.Clone(st.Warnings)
 	if a.dnsDown.Load() {
 		ws = append(ws, dnsWarning)
+	}
+	if a.KeysOnCard != nil {
+		ws = append(ws, node.Warning{Title: "Login kept on the SD card",
+			Text: "The Q2's internal storage didn't take it (" + a.KeysOnCard.Error() + "): anyone who reads the card can join your tailnet as this device."})
 	}
 	return ws
 }

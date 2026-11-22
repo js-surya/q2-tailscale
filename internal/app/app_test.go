@@ -484,6 +484,21 @@ func TestStartKeepsSavedChoices(t *testing.T) {
 	}
 }
 
+// A login the Q2's internal storage couldn't take, kept on the SD card, is a warning while connected: the
+// red-marked icon and a row saying why.
+func TestKeysLeftOnTheCardAreAWarning(t *testing.T) {
+	w := newWorld(t, running(nas))
+	w.app.KeysOnCard = errors.New("internal storage: no space left on device")
+	w.app.Reconcile()
+	if got := w.file("q2-tailscale.state"); got != "bar=warn\n" {
+		t.Fatalf("state %q", got)
+	}
+	ws := w.app.Warnings()
+	if len(ws) != 1 || ws[0].Title != "Login kept on the SD card" || !strings.Contains(ws[0].Text, "no space left on device") {
+		t.Fatalf("%+v", ws)
+	}
+}
+
 // A health warning while connected, or the Wi-Fi's name servers not answering, shows the icon with its
 // red mark (bar=warn) and the page's warning rows; a lookup that works again clears the DNS one.
 func TestWarningsMarkTheIcon(t *testing.T) {
