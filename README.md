@@ -38,6 +38,18 @@ the App Store deletes them too (the app does it itself, within a minute of being
 Tailscale's own logs are off unless you turn on **Send Logs to Tailscale** in Settings. A tailnet that
 requires logs (network flow logs) won't connect without it; the page says so.
 
+## Battery
+
+The app follows the Wi-Fi link: it starts once Wi-Fi has an address and stops about 10 seconds after
+the link is gone. It never keeps Wi-Fi on by itself, so with **Smart Wi-Fi** on (System settings →
+Power) Wi-Fi goes off after 5 minutes without use and Tailscale stops with it. While Wi-Fi is on, it
+asks no router for open ports (UPnP, NAT-PMP, PCP), so its traffic wakes the radio as little as it can.
+
+- **SyncLink over Wi-Fi keeps Wi-Fi on all the time**, so Smart Wi-Fi never turns it off. If you don't
+  control the Q2 from Shanling's app, turn **SyncLink** off in System settings (or set it to
+  Bluetooth).
+- Files sent with Taildrop arrive only while the Q2's Wi-Fi is on. Opening the app's page turns it on.
+
 ## Undoing its changes
 
 The app's changes to the system are made at start and undone at stop: its lines in `/etc/resolv.conf`
