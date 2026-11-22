@@ -46,8 +46,8 @@ Power) Wi-Fi goes off after 5 minutes without use and Tailscale stops with it. W
 asks no router for open ports (UPnP, NAT-PMP, PCP), so its traffic wakes the radio as little as it can.
 
 - **SyncLink over Wi-Fi keeps Wi-Fi on all the time**, so Smart Wi-Fi never turns it off. If you don't
-  control the Q2 from Shanling's app, turn **SyncLink** off in System settings (or set it to
-  Bluetooth).
+  control the Q2 from Shanling's app, turn it off in **System settings → Wireless → SyncLink**, below
+  the Bluetooth switch (or set it to Bluetooth).
 - Files sent with Taildrop arrive only while the Q2's Wi-Fi is on. Opening the app's page turns it on.
 
 ## Undoing its changes
