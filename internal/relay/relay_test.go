@@ -175,3 +175,55 @@ func TestDialFailureClosesFast(t *testing.T) {
 		t.Fatalf("%v after %v", err, time.Since(t0))
 	}
 }
+
+// A connection from the network, not from the Q2 itself (a device on the same Wi-Fi routing a tailnet
+// IP through it), is closed without reaching the tailnet.
+func TestOnlyTheQ2ItselfIsRelayed(t *testing.T) {
+	dialed := make(chan string, 1)
+	r := &Relay{
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialed <- addr
+			return dialer(ctx, network, addr)
+		},
+		Own: func(netip.Addr) bool { return false },
+	}
+	defer r.Close()
+	srv, local := echo(t), freePort(t)
+	if errs := r.Sync([]Target{{Listen: local, Dial: srv}}); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	c, err := net.Dial("tcp", local.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(2 * time.Second))
+	c.Write([]byte("hello\n"))
+	if line, err := bufio.NewReader(c).ReadString('\n'); err == nil {
+		t.Fatalf("relayed %q", line)
+	} else if errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatal("left open")
+	}
+	select {
+	case addr := <-dialed:
+		t.Fatalf("dialed %s", addr)
+	default:
+	}
+}
+
+// The Q2's own addresses: loopback and every address on its interfaces (the tailnet IPs on lo, its
+// Wi-Fi address); nothing else.
+func TestOwnAddr(t *testing.T) {
+	if !ownAddr(netip.MustParseAddr("127.0.0.1")) {
+		t.Error("127.0.0.1 not own")
+	}
+	if ownAddr(netip.MustParseAddr("192.0.2.1")) {
+		t.Error("192.0.2.1 (TEST-NET-1) own")
+	}
+	addrs, _ := net.InterfaceAddrs()
+	for _, a := range addrs {
+		if p, err := netip.ParsePrefix(a.String()); err == nil && !ownAddr(p.Addr()) {
+			t.Errorf("%s, an interface's, not own", p.Addr())
+		}
+	}
+}

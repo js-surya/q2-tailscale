@@ -1,6 +1,8 @@
 // Package relay listens on local addresses (a tailnet machine's IP on lo, or 127.0.0.1 for a forward) and
 // pipes each connection to its target through the tailnet (tsnet's Dial), byte for byte: TLS stays end to
-// end between the program and the machine.
+// end between the program and the machine. Only the Q2's own programs are relayed: Linux takes a packet
+// for any of its addresses on any interface, so a device on the same Wi-Fi could route a tailnet IP
+// through the Q2 and reach the tailnet as the Q2; a connection from an address not the Q2's is closed.
 package relay
 
 import (
@@ -27,9 +29,11 @@ type listener struct {
 	conns map[net.Conn]bool
 }
 
-// Relay keeps a set of listeners.
+// Relay keeps a set of listeners. Own says whether a connection's source is the Q2 itself; nil is
+// ownAddr.
 type Relay struct {
 	Dial Dialer
+	Own  func(netip.Addr) bool
 	mu   sync.Mutex
 	ls   map[netip.AddrPort]*listener
 }
@@ -89,6 +93,14 @@ func (r *Relay) accept(l *listener) {
 			c.Close()
 			return
 		}
+		if !r.own(c) {
+			l.mu.Unlock()
+			if tc, ok := c.(*net.TCPConn); ok {
+				tc.SetLinger(0) // a reset
+			}
+			c.Close()
+			continue
+		}
 		l.conns[c] = true
 		dial := l.dial
 		l.mu.Unlock()
@@ -99,6 +111,37 @@ func (r *Relay) accept(l *listener) {
 			l.mu.Unlock()
 		}()
 	}
+}
+
+// own: c comes from the Q2 itself.
+func (r *Relay) own(c net.Conn) bool {
+	ap, err := netip.ParseAddrPort(c.RemoteAddr().String())
+	if err != nil {
+		return false
+	}
+	if r.Own != nil {
+		return r.Own(ap.Addr().Unmap())
+	}
+	return ownAddr(ap.Addr().Unmap())
+}
+
+// ownAddr: a is loopback or one of this host's interface addresses. A program on the Q2 connecting to a
+// tailnet IP on lo comes from that IP (or another of the Q2's); a packet from the network can't carry
+// one, as Linux drops a packet arriving with a local source address.
+func ownAddr(a netip.Addr) bool {
+	if a.IsLoopback() {
+		return true
+	}
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return false
+	}
+	for _, x := range addrs {
+		if p, err := netip.ParsePrefix(x.String()); err == nil && p.Addr().Unmap() == a {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *listener) close() {
