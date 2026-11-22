@@ -571,3 +571,37 @@ func TestReceivedNoteFiveMinutes(t *testing.T) {
 		t.Fatal("note kept past 5 minutes")
 	}
 }
+
+// A tailnet that requires logs, with them off, stops the node: the page says why and what to turn on,
+// though Tailscale isn't running.
+func TestATailnetThatRequiresLogsSaysSo(t *testing.T) {
+	w := newWorld(t, node.Status{State: "Stopped", Self: "q2-pod", LogsRequired: true})
+	ws := w.app.Warnings()
+	if len(ws) != 1 || ws[0].Title != "This tailnet requires logs" || !strings.Contains(ws[0].Text, "Send Logs to Tailscale") {
+		t.Fatalf("%+v", ws)
+	}
+}
+
+// With logs turned on, a start turns Tailscale on again: a tailnet that required them had stopped it.
+func TestStartWithLogsOnTurnsTailscaleOn(t *testing.T) {
+	w := newWorld(t, node.Status{State: "Stopped"})
+	config.SaveSettings(w.dir, config.Settings{Hostname: "q2-pod", Logs: true})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- w.app.Run(ctx) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		w.node.mu.Lock()
+		n := len(w.node.wants)
+		w.node.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if !slices.Equal(w.node.wants, []bool{true}) {
+		t.Fatalf("wants %v", w.node.wants)
+	}
+}

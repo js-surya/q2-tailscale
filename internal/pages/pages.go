@@ -38,6 +38,7 @@ type Deps struct {
 	Now      func() time.Time
 	SetOn    func(context.Context, bool) error // Tailscale on or off, the choice kept (app.SetOn)
 	Caps     func() string                     // the firmware's /tmp/q2-addon.caps (FirmwareCaps)
+	Restart  func()                            // the app starts over, its changes undone first (Send Logs)
 	Version  string                            // the app's, for About
 }
 
@@ -175,11 +176,22 @@ func Handler(d Deps) q2spot.Handler {
 				save = config.DefaultSave
 			}
 			return ok(toggle(d.Caps(), "autostart", "Start with Wi-Fi", config.AutoStart(d.Dir)),
+				toggle(d.Caps(), "logs", "Send Logs to Tailscale", s.Logs),
 				q2spot.Row{Kind: "list", URI: "saveto", Title: "Save To", Subtitle: save},
 				q2spot.Row{Kind: "field", URI: "setports", Title: "Extra Ports:", Subtitle: ports},
 				q2spot.Row{Kind: "field", URI: "sethost", Title: "Device Name:", Subtitle: s.Hostname},
 				q2spot.Row{Kind: "list", URI: "about", Title: "About"},
 				q2spot.Row{Kind: "action", URI: "signout", Title: "Sign Out"})
+		case "logs": // Tailscale's logs are set at the app's start: saved, then it starts over
+			s := config.LoadSettings(d.Dir)
+			s.Logs = !s.Logs
+			if err := config.SaveSettings(d.Dir, s); err != nil {
+				return fail("Couldn't save: %v", err)
+			}
+			if d.Restart != nil {
+				go func() { time.Sleep(300 * time.Millisecond); d.Restart() }() // the reply goes first
+			}
+			return say("Restarting with logs " + onOff(s.Logs))
 		case "saveto":
 			return saveTo(d.Dir, arg(0))
 		case "savehere":

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -26,7 +27,9 @@ import (
 	"q2-tailscale/internal/relay"
 	"q2-tailscale/internal/taildrop"
 
+	"tailscale.com/envknob"
 	"tailscale.com/ipn/store"
+	"tailscale.com/logtail"
 )
 
 const version = "q2-v0.1"
@@ -61,6 +64,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	defer stop()
 
 	settings := config.LoadSettings(*dir)
+	setLogs(settings.Logs, logtail.Disable, envknob.SetNoLogsNoSupport)
+	logf("logs to Tailscale %s", map[bool]string{true: "on", false: "off"}[settings.Logs])
+	var again atomic.Bool // Send Logs flipped: start over once everything is undone
 	stateDir := filepath.Join(*dir, "state")
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		logf("state folder: %v", err)
@@ -86,7 +92,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	go (&taildrop.Receiver{Src: n, Staged: n.Staged, Logf: logf, Got: a.Got,
 		Dest: func() (string, error) { return config.SaveDir(*dir, config.LoadSettings(*dir)) }}).Run(ctx)
 	go func() {
-		h := pages.Handler(pages.Deps{App: a, Dir: *dir, Logout: n.Logout, Stop: stop, SetOn: a.SetOn, Version: version})
+		h := pages.Handler(pages.Deps{App: a, Dir: *dir, Logout: n.Logout, Stop: stop, SetOn: a.SetOn, Version: version,
+			Restart: func() { again.Store(true); stop() }})
 		if err := q2spot.Serve(ctx, *socket, h); err != nil {
 			logf("page socket: %v", err)
 		}
@@ -98,7 +105,33 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	os.Remove(*socket)
 	logf("stopped")
+	if again.Load() {
+		logf("restarting")
+		if err := restartSelf(os.Executable, syscall.Exec, os.Args); err != nil {
+			logf("restart: %v", err)
+			return 1 // the launcher starts it again
+		}
+	}
 	return 0
+}
+
+// setLogs switches Tailscale's own logs off unless on: logtail's uploads and its buffers on the card
+// (Disable) and what the node tells the tailnet about it (no-logs-no-support). A tailnet with network
+// flow logs then won't run the node, which the page explains (node.LogsRequired).
+func setLogs(on bool, disable, noLogsNoSupport func()) {
+	if !on {
+		disable()
+		noLogsNoSupport()
+	}
+}
+
+// restartSelf runs this program again in this process (exec), so the launcher's wait on its pid holds.
+func restartSelf(executable func() (string, error), exec func(string, []string, []string) error, args []string) error {
+	path, err := executable()
+	if err != nil {
+		return err
+	}
+	return exec(path, args, os.Environ())
 }
 
 // tuneMemory keeps the heap small on the Q2 (128 MB, no swap): collected at half its live size again

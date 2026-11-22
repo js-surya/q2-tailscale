@@ -17,6 +17,7 @@ import (
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tsconst"
 	"tailscale.com/tsnet"
 
 	_ "tailscale.com/feature/taildrop" // receiving files: tsnet leaves it out
@@ -41,6 +42,7 @@ type Status struct {
 	Peers                []Peer // by name; machines without an IPv4 left out
 	Services             []Peer // Tailscale Services (navidrome.<tailnet>.ts.net): names, not machines
 	Warnings             []Warning
+	LogsRequired         bool // the tailnet requires logs, which are off: Tailscale stopped the node
 }
 
 // Warning is one of Tailscale's health warnings, as its apps show it.
@@ -48,6 +50,16 @@ type Warning struct{ Title, Text string }
 
 // quiet are warnings the page shows as its state already.
 var quiet = map[health.WarnableCode]bool{"warming-up": true, "wantrunning-false": true}
+
+// LogsRequired is whether Tailscale stopped the node because its tailnet requires logs (network flow
+// logs) and they are off: a low-severity local-log warning, which Warnings leaves out.
+func LogsRequired(st *health.State) bool {
+	if st == nil {
+		return false
+	}
+	u, ok := st.Warnings[tsconst.HealthWarnableLocalLogConfigError]
+	return ok && strings.Contains(u.Text, "tailnet requires logging")
+}
 
 // Warnings are Tailscale's health warnings of medium severity or more, the most severe first, then
 // by title; nil when healthy.
@@ -159,12 +171,13 @@ func FromIPN(st *ipnstate.Status) Status {
 
 // TSNet is the Node, on tsnet.
 type TSNet struct {
-	dir     string
-	srv     *tsnet.Server
-	updates chan struct{}
-	mu      sync.Mutex
-	st      Status
-	health  []Warning // from the bus's health messages
+	dir          string
+	srv          *tsnet.Server
+	updates      chan struct{}
+	mu           sync.Mutex
+	st           Status
+	health       []Warning // from the bus's health messages
+	logsRequired bool      // and whether they say the tailnet requires logs
 }
 
 // NewTSNet is a node keeping its identity in stateDir (on the card: the same device across restarts),
@@ -216,6 +229,7 @@ func (n *TSNet) Start(ctx context.Context) error {
 				if msg.Health != nil {
 					n.mu.Lock()
 					n.health = Warnings(msg.Health)
+					n.logsRequired = LogsRequired(msg.Health)
 					n.mu.Unlock()
 				}
 				n.refresh(ctx)
@@ -258,6 +272,7 @@ func (n *TSNet) refresh(ctx context.Context) {
 	}
 	n.mu.Lock()
 	s.Warnings = n.health
+	s.LogsRequired = n.logsRequired
 	n.st = s
 	n.mu.Unlock()
 	select {

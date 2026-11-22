@@ -3,7 +3,7 @@
 //	settings      key=value lines: hostname (the device's name on the tailnet), ports (extra ports every
 //	              machine listens on, comma-separated, beyond DefaultPorts), connect=off (Tailscale turned
 //	              off on the page: signed in, not connected), autostart=off (not started with Wi-Fi),
-//	              save (Taildrop's folder on the card)
+//	              save (Taildrop's folder on the card), logs=on (Tailscale's own logs sent to it)
 //	q2app         Q2 Pod's file for the app; its wifi=1 line starts it with Wi-Fi (AutoStart)
 //	forwards.txt  "<local port> <machine or Tailscale IP> <port>" lines, # comments: 127.0.0.1:<local port>
 //	              goes to that machine's port
@@ -36,6 +36,7 @@ type Settings struct {
 	Off      bool     // Tailscale turned off: signed in, not connected
 	Manual   bool     // not started with Wi-Fi: only when opened (q2app without wifi=1)
 	Save     string   // where Taildrop files go, relative to the card; "" is DefaultSave
+	Logs     bool     // Tailscale's logs uploaded to it (and buffered on the card); off unless chosen
 }
 
 // DefaultSave is the folder on the card Taildrop files go to unless the settings say otherwise.
@@ -148,6 +149,8 @@ func LoadSettings(dir string) Settings {
 			s.Manual = strings.TrimSpace(v) == "off"
 		case "save":
 			s.Save = strings.TrimSpace(v)
+		case "logs":
+			s.Logs = strings.TrimSpace(v) == "on"
 		}
 	}
 	return s
@@ -168,6 +171,9 @@ func SaveSettings(dir string, s Settings) error {
 	}
 	if s.Save != "" {
 		text += "save=" + s.Save + "\n"
+	}
+	if s.Logs {
+		text += "logs=on\n"
 	}
 	return writeWhole(filepath.Join(dir, "settings"), []byte(text))
 }

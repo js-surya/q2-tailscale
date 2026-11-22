@@ -47,3 +47,29 @@ func TestMemoryTuned(t *testing.T) {
 		t.Fatalf("GOMEMLIMIT set: gc %v limit %v", gc, limit)
 	}
 }
+
+// Tailscale's logs are switched off at the start, uploads and the card's buffers both, unless Send Logs
+// is on.
+func TestLogsOffUnlessChosen(t *testing.T) {
+	var disabled, noSupport int
+	setLogs(false, func() { disabled++ }, func() { noSupport++ })
+	if disabled != 1 || noSupport != 1 {
+		t.Fatalf("off: disable %d, no-logs %d", disabled, noSupport)
+	}
+	setLogs(true, func() { disabled++ }, func() { noSupport++ })
+	if disabled != 1 || noSupport != 1 {
+		t.Fatalf("on: disable %d, no-logs %d", disabled, noSupport)
+	}
+}
+
+// A restart starts the same program again in this process, so the launcher still waits on its pid.
+func TestRestartRunsItselfAgain(t *testing.T) {
+	var got string
+	var gotArgs []string
+	err := restartSelf(func() (string, error) { return "/mnt/mmc/.tailscale/q2-tailscale", nil },
+		func(path string, args, env []string) error { got, gotArgs = path, args; return nil },
+		[]string{"q2-tailscale", "-dir", "/mnt/mmc/.tailscale"})
+	if err != nil || got != "/mnt/mmc/.tailscale/q2-tailscale" || len(gotArgs) != 3 || gotArgs[2] != "/mnt/mmc/.tailscale" {
+		t.Fatalf("%v %q %q", err, got, gotArgs)
+	}
+}

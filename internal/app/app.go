@@ -290,9 +290,17 @@ var dnsWarning = node.Warning{Title: "DNS unavailable",
 // Forwarded hears the name server's forwards: whether the Wi-Fi's name servers answered.
 func (a *App) Forwarded(ok bool) { a.dnsDown.Store(!ok) }
 
+// logsWarning: a tailnet with network flow logs won't run a node whose logs are off.
+var logsWarning = node.Warning{Title: "This tailnet requires logs",
+	Text: "Its admin turned on network flow logs, so Tailscale won't connect with logs off. Turn on Send Logs to Tailscale in Settings."}
+
 // Warnings are what's wrong while connected: Tailscale's health warnings, then DNS; nil when nothing is.
+// A tailnet that requires logs, with them off, is the one warning while not connected: it is why.
 func (a *App) Warnings() []node.Warning {
 	st := a.Node.Status()
+	if st.LogsRequired {
+		return []node.Warning{logsWarning}
+	}
 	if st.State != "Running" {
 		return nil
 	}
@@ -365,6 +373,10 @@ func (a *App) Run(ctx context.Context) error {
 	if s := config.LoadSettings(a.Dir); s.Off {
 		if err := a.Node.SetRunning(ctx, false); err != nil {
 			a.logf("turn off: %v", err)
+		}
+	} else if s.Logs { // logs just turned on: a tailnet that required them had stopped the node
+		if err := a.Node.SetRunning(ctx, true); err != nil {
+			a.logf("turn on: %v", err)
 		}
 	}
 	if s := config.LoadSettings(a.Dir); config.AutoStart(a.Dir) == s.Manual {

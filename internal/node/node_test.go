@@ -104,3 +104,19 @@ func TestWarningsFromHealth(t *testing.T) {
 		t.Fatal("healthy: warnings")
 	}
 }
+
+// A tailnet with network flow logs won't run a node that sends none: Tailscale says so in a low-severity
+// local-log warning and stops the node, which LogsRequired picks out.
+func TestATailnetThatRequiresLogsIsNoticed(t *testing.T) {
+	st := &health.State{Warnings: map[health.WarnableCode]health.UnhealthyState{
+		"local-log-config-error": {WarnableCode: "local-log-config-error", Severity: health.SeverityLow,
+			Title: "Local log misconfiguration", Text: "The local log is misconfigured: tailnet requires logging to be enabled. Remove --no-logs-no-support from tailscaled command line."},
+	}}
+	if !LogsRequired(st) {
+		t.Fatal("not noticed")
+	}
+	if LogsRequired(nil) || LogsRequired(&health.State{Warnings: map[health.WarnableCode]health.UnhealthyState{
+		"local-log-config-error": {WarnableCode: "local-log-config-error", Text: "The local log is misconfigured: disk full"}}}) {
+		t.Fatal("noticed without the tailnet asking")
+	}
+}

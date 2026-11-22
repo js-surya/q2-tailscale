@@ -187,8 +187,8 @@ func TestRemoveForward(t *testing.T) {
 func TestSettingsFields(t *testing.T) {
 	w := newWorld(t, running(nas))
 	r := w.h("settings", nil)
-	if strings.Join(titles(r), "|") != "action:Start with Wi-Fi|list:Save To|field:Extra Ports:|field:Device Name:|list:About|action:Sign Out" ||
-		r.Rows[2].Subtitle != "None" || r.Rows[3].Subtitle != "q2-pod" {
+	if strings.Join(titles(r), "|") != "action:Start with Wi-Fi|action:Send Logs to Tailscale|list:Save To|field:Extra Ports:|field:Device Name:|list:About|action:Sign Out" ||
+		r.Rows[3].Subtitle != "None" || r.Rows[4].Subtitle != "q2-pod" {
 		t.Fatalf("%+v", r.Rows)
 	}
 	if r := w.h("setports", []string{"8443, 9000"}); r.Status != "ok" {
@@ -362,7 +362,7 @@ func TestSaveToRows(t *testing.T) {
 		os.MkdirAll(filepath.Join(card, d), 0o755)
 	}
 	os.WriteFile(filepath.Join(card, "song.flac"), nil, 0o644)
-	if r := w.h("settings", nil).Rows[1]; r.URI != "saveto" || r.Subtitle != "musics/Taildrop" {
+	if r := w.h("settings", nil).Rows[2]; r.URI != "saveto" || r.Subtitle != "musics/Taildrop" {
 		t.Fatalf("%+v", r)
 	}
 	r := w.h("saveto", []string{""})    // the card itself: its folders only ("" is the default folder)
@@ -404,7 +404,7 @@ func TestSaveHere(t *testing.T) {
 	if s := config.LoadSettings(w.dir); s.Save != "Podcasts/New" {
 		t.Fatalf("saved %q", s.Save)
 	}
-	if r := w.h("settings", nil).Rows[1]; r.Subtitle != "Podcasts/New" {
+	if r := w.h("settings", nil).Rows[2]; r.Subtitle != "Podcasts/New" {
 		t.Fatalf("%+v", r)
 	}
 	if r := w.h("savehere", []string{"Gone"}); r.Status != "error" {
@@ -427,5 +427,31 @@ func TestSaveToRejectsDotDot(t *testing.T) {
 		if r := w.h("savehere", []string{rel}); r.Status != "error" {
 			t.Errorf("savehere %q: %+v", rel, r)
 		}
+	}
+}
+
+// Send Logs to Tailscale is a switch in Settings, off at first; a press saves the other way and restarts
+// the app, as Tailscale's logs are set at its start.
+func TestSendLogsSwitchSavesAndRestarts(t *testing.T) {
+	w := newWorld(t, running())
+	restarts := 0
+	w.h = Handler(Deps{App: w.app, Dir: w.dir, Caps: func() string { return "switch" }, Restart: func() { restarts++ }})
+	r := w.h("settings", nil)
+	if len(r.Rows) < 2 || r.Rows[1].URI != "logs" || r.Rows[1].Title != "Send Logs to Tailscale" || r.Rows[1].Subtitle != "off" {
+		t.Fatalf("%+v", r.Rows)
+	}
+	if r := w.h("logs", nil); !strings.Contains(r.Message, "Restarting") || !config.LoadSettings(w.dir).Logs {
+		t.Fatalf("%+v %+v", r, config.LoadSettings(w.dir))
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for restarts == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if restarts != 1 {
+		t.Fatalf("restarts %d", restarts)
+	}
+	w.h("logs", nil)
+	if config.LoadSettings(w.dir).Logs {
+		t.Fatal("still on")
 	}
 }

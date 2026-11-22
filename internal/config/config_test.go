@@ -200,3 +200,22 @@ func TestSaveDirFallback(t *testing.T) {
 		t.Fatalf("chosen %q", got)
 	}
 }
+
+// Logs to Tailscale are off unless the settings say logs=on, and saved as that line.
+func TestLogsAreOffUnlessTheSettingsSayOn(t *testing.T) {
+	dir := t.TempDir()
+	if LoadSettings(dir).Logs {
+		t.Fatal("logs on with no settings")
+	}
+	if err := SaveSettings(dir, Settings{Hostname: "q2-pod", Logs: true}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "settings"))
+	if !strings.Contains(string(b), "logs=on\n") || !LoadSettings(dir).Logs {
+		t.Fatalf("settings %q", b)
+	}
+	SaveSettings(dir, Settings{Hostname: "q2-pod"})
+	if b, _ := os.ReadFile(filepath.Join(dir, "settings")); strings.Contains(string(b), "logs") {
+		t.Fatalf("settings %q", b)
+	}
+}
