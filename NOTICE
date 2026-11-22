@@ -1,0 +1,13 @@
+q2-tailscale includes or adapts:
+
+- q2-subsonic (https://github.com/andsuor/q2-subsonic), MIT: the card launcher's shape
+  (contrib/shanlingq2/launcher.sh), the build and packaging scripts, the Q2SPOT/1 framing, and
+  internal/qr (the QR encoder, copied whole).
+- Tailscale (https://github.com/tailscale/tailscale), BSD-3-Clause: tsnet and its dependencies.
+- The status bar icons (contrib/shanlingq2/bar_icons.py) follow the geometry of tailscale-android's
+  ic_notification and ic_notification_disabled (BSD-3-Clause). "Tailscale" and its logo are trademarks
+  of Tailscale Inc.; this project is not affiliated with or endorsed by Tailscale.
+
+It is a card app for Q2 Pod (https://github.com/DiamondBond/q2-pod), by DiamondBond and the Q2 Pod
+community. The licences of everything in the binary are in LICENSES.txt beside it on the card
+(contrib/shanlingq2/licenses.sh).
