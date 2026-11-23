@@ -85,6 +85,10 @@ asks no router for open ports (UPnP, NAT-PMP, PCP), so its traffic wakes the rad
   control the Q2 from Shanling's app, turn it off in **System settings → Wireless → SyncLink**, below
   the Bluetooth switch (or set it to Bluetooth).
 - Files sent with Taildrop arrive only while the Q2's Wi-Fi is on. Opening the app's page turns it on.
+- **Sending a big file?** Smart Wi-Fi doesn't count Taildrop as using the network, so it can switch Wi-Fi
+  off in the middle of a transfer that runs past its 5 minutes. For big transfers, keep the app's page open
+  on the Q2, or turn **Smart Wi-Fi** off until it's done. A file is only moved into your folder once it has
+  arrived whole, so a broken transfer leaves nothing half-written; send it again.
 
 ## Undoing its changes
 
