@@ -43,6 +43,8 @@ type Status struct {
 	Services             []Peer // Tailscale Services (navidrome.<tailnet>.ts.net): names, not machines
 	Warnings             []Warning
 	LogsRequired         bool // the tailnet requires logs, which are off: Tailscale stopped the node
+	CertDomain           string         // the node's HTTPS name (q2-pod.<tailnet>.ts.net), "" while HTTPS is off for the tailnet
+	SelfUser             tailcfg.UserID // the owner: whose devices may reach the Q2's app pages
 }
 
 // Warning is one of Tailscale's health warnings, as its apps show it.
@@ -149,6 +151,10 @@ func FromIPN(st *ipnstate.Status) Status {
 			out.Self = st.Self.HostName
 		}
 		out.SelfIP = ipv4(st.Self.TailscaleIPs)
+		out.SelfUser = st.Self.UserID
+	}
+	if len(st.CertDomains) > 0 {
+		out.CertDomain = strings.ToLower(st.CertDomains[0])
 	}
 	if st.CurrentTailnet != nil {
 		out.Suffix = strings.ToLower(st.CurrentTailnet.MagicDNSSuffix)
@@ -203,6 +209,27 @@ func (n *TSNet) Status() Status {
 // Listen listens on the node's tailnet addresses (remote's forwarder: q2remote's port).
 func (n *TSNet) Listen(network, addr string) (net.Listener, error) {
 	return n.srv.Listen(network, addr)
+}
+
+// ListenTLS listens over HTTPS on the node's tailnet addresses, with Tailscale's certificate for its
+// name (fetched at the first connection); an error while HTTPS is off for the tailnet.
+func (n *TSNet) ListenTLS(network, addr string) (net.Listener, error) {
+	return n.srv.ListenTLS(network, addr)
+}
+
+// Owner is whether a connection from remote (ip:port on the tailnet) comes from one of the owner's own
+// devices: the same user, not a tagged machine or one shared in from another tailnet.
+func (n *TSNet) Owner(ctx context.Context, remote string) bool {
+	lc, err := n.srv.LocalClient()
+	if err != nil {
+		return false
+	}
+	who, err := lc.WhoIs(ctx, remote)
+	if err != nil || who == nil || who.Node == nil || who.UserProfile == nil || who.Node.IsTagged() {
+		return false
+	}
+	self := n.Status().SelfUser
+	return !self.IsZero() && who.UserProfile.ID == self
 }
 
 func (n *TSNet) Dial(ctx context.Context, network, addr string) (net.Conn, error) {

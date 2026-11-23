@@ -25,6 +25,8 @@ affiliated with or endorsed by Tailscale.
 - **Forwards:** `127.0.0.1:<port>` to any machine's port, for apps that can't take a name.
 - **Taildrop:** files sent to the Q2 from your phone or computer land in a folder on the card you
   choose.
+- **Q2 apps on Tailscale:** open the page of an app running on the Q2, such as EQ Studio, from your
+  phone or computer on another network (below). Off unless you turn it on.
 - **Status bar icon:** connected, off or warning.
 - **Follows Wi-Fi:** starts when Wi-Fi connects, stops when it goes (or only when you open it).
 
@@ -42,7 +44,9 @@ affiliated with or endorsed by Tailscale.
   Wi-Fi transfer holds no way into your tailnet.
 - **Nothing is opened to the local network.** The name server and your forwards listen on `127.0.0.1`
   only, and your machines' Tailscale IPs answer only programs on the Q2.
-- **Nothing is served to your tailnet** but Taildrop, which takes files only from your own devices.
+- **Nothing is served to your tailnet** but Taildrop, which takes files only from your own devices,
+  and, if you turn on **Q2 Apps on Tailscale**, the pages of the apps running on the Q2, to your own
+  devices only.
 - **No logs leave the Q2** unless you turn on **Send Logs to Tailscale** in Settings. A tailnet that
   requires logs (network flow logs) won't connect without it; the page says so. The app's own log is in
   RAM (`/tmp/q2-tailscale.log`) and is gone at reboot.
@@ -88,6 +92,25 @@ asks no router for open ports (UPnP, NAT-PMP, PCP), so its traffic wakes the rad
   the Bluetooth switch (or set it to Bluetooth).
 - Files sent with Taildrop arrive only while the Q2's Wi-Fi is on. Opening the app's page turns it on.
 - Big Taildrop files: turn **Smart Wi-Fi** off until they arrive, or it may cut the transfer.
+
+## Q2 apps on Tailscale
+
+An app on the Q2 with a page, such as EQ Studio or File Browser, shows a QR code with its address on the
+Q2's Wi-Fi, which a phone on another network can't reach. Turn on **Q2 Apps on Tailscale** in Settings,
+and while such an app runs, its page is also at the Q2's Tailscale address, on the same port:
+**Settings → Apps Shared Now** shows each one's address, such as `http://100.101.102.103:8020`. Open it
+from a phone or computer with Tailscale on, then sign in with the PIN under the app's QR code.
+
+- **Only your own devices** get through: those signed in to Tailscale as you. A tagged machine, or one
+  shared to you from another tailnet, is refused. Each app still asks for its own PIN or key.
+- Only apps running now are shared; one that stops is taken off.
+- **Use HTTPS** serves them at the Q2's name with Tailscale's certificate instead, such as
+  `https://q2-pod.tail1234.ts.net:8020`. It needs HTTPS turned on for your tailnet in the
+  [admin console](https://login.tailscale.com/admin/dns) (DNS → HTTPS Certificates); without it, the
+  pages stay plain HTTP and Apps Shared Now says so. The Q2's name goes into Tailscale's public
+  certificate log, as every HTTPS name does. The first visit takes a few seconds while the certificate
+  is fetched.
+- Turn **Smart Wi-Fi** off while you use them from afar, or it may turn the Q2's Wi-Fi off.
 
 ## Developer option: q2remote over Tailscale
 

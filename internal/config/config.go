@@ -38,6 +38,8 @@ type Settings struct {
 	Save     string   // where Taildrop files go, relative to the card; "" is DefaultSave
 	Logs     bool     // Tailscale's logs uploaded to it (and buffered on the card); off unless chosen
 	Remote   bool     // q2remote passed through the tailnet (developer firmware only); off unless chosen
+	Apps     bool     // running card apps' pages passed on to the owner's devices on the tailnet; off unless chosen
+	HTTPS    bool     // and over HTTPS, at the node's ts.net name, when the tailnet has HTTPS on
 }
 
 // DefaultSave is the folder on the card Taildrop files go to unless the settings say otherwise.
@@ -154,6 +156,10 @@ func LoadSettings(dir string) Settings {
 			s.Logs = strings.TrimSpace(v) == "on"
 		case "remote":
 			s.Remote = strings.TrimSpace(v) == "on"
+		case "apps":
+			s.Apps = strings.TrimSpace(v) == "on"
+		case "https":
+			s.HTTPS = strings.TrimSpace(v) == "on"
 		}
 	}
 	return s
@@ -180,6 +186,12 @@ func SaveSettings(dir string, s Settings) error {
 	}
 	if s.Remote {
 		text += "remote=on\n"
+	}
+	if s.Apps {
+		text += "apps=on\n"
+	}
+	if s.HTTPS {
+		text += "https=on\n"
 	}
 	return writeWhole(filepath.Join(dir, "settings"), []byte(text))
 }

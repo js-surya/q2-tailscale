@@ -235,3 +235,19 @@ func TestRemoteSetting(t *testing.T) {
 		t.Fatal("not kept")
 	}
 }
+
+// App pages on the tailnet, and over HTTPS, are off unless chosen, and kept once chosen.
+func TestAppsSettings(t *testing.T) {
+	dir := t.TempDir()
+	if s := LoadSettings(dir); s.Apps || s.HTTPS {
+		t.Fatal("on before chosen")
+	}
+	s := LoadSettings(dir)
+	s.Apps, s.HTTPS = true, true
+	if err := SaveSettings(dir, s); err != nil {
+		t.Fatal(err)
+	}
+	if s := LoadSettings(dir); !s.Apps || !s.HTTPS {
+		t.Fatalf("not kept: %+v", s)
+	}
+}

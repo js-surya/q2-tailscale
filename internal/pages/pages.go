@@ -41,7 +41,11 @@ type Deps struct {
 	Restart  func()                            // the app starts over, its changes undone first (Send Logs)
 	Version  string                            // the app's, for About
 	Dev      func() bool                       // a developer firmware (q2remote there): its option shown
+	Shared   func() ([]SharedApp, string)      // app pages on the tailnet now, and a note (HTTPS off, not yet connected)
 }
+
+// SharedApp is a running card app's page on the tailnet, and the address to open it at.
+type SharedApp struct{ Name, Address string }
 
 // FirmwareCaps reads the words Q2 Pod writes for card apps: what its pages can draw.
 func FirmwareCaps() string {
@@ -181,6 +185,11 @@ func Handler(d Deps) q2spot.Handler {
 				q2spot.Row{Kind: "list", URI: "saveto", Title: "Save To", Subtitle: save},
 				q2spot.Row{Kind: "field", URI: "setports", Title: "Extra Ports:", Subtitle: ports},
 				q2spot.Row{Kind: "field", URI: "sethost", Title: "Device Name:", Subtitle: s.Hostname}}
+			rows = append(rows, toggle(d.Caps(), "apps", "Q2 Apps on Tailscale", s.Apps))
+			if s.Apps {
+				rows = append(rows, toggle(d.Caps(), "https", "Use HTTPS", s.HTTPS),
+					q2spot.Row{Kind: "list", URI: "sharedapps", Title: "Apps Shared Now"})
+			}
 			if d.Dev != nil && d.Dev() { /* a developer firmware: its option, nowhere else */
 				rows = append(rows, toggle(d.Caps(), "remote", "q2remote over Tailscale", s.Remote))
 			}
@@ -200,6 +209,41 @@ func Handler(d Deps) q2spot.Handler {
 				go func() { time.Sleep(300 * time.Millisecond); d.Restart() }() // the reply goes first
 			}
 			return say("Restarting with q2remote over Tailscale " + onOff(s.Remote))
+		case "apps", "https": // set at the app's start, as Send Logs: saved, then it starts over
+			s := config.LoadSettings(d.Dir)
+			msg := ""
+			if op == "apps" {
+				s.Apps = !s.Apps
+				msg = "Restarting with Q2 apps on Tailscale " + onOff(s.Apps)
+			} else {
+				s.HTTPS = !s.HTTPS
+				msg = "Restarting with HTTPS " + onOff(s.HTTPS)
+			}
+			if err := config.SaveSettings(d.Dir, s); err != nil {
+				return fail("Couldn't save: %v", err)
+			}
+			if d.Restart != nil {
+				go func() { time.Sleep(300 * time.Millisecond); d.Restart() }() // the reply goes first
+			}
+			return say(msg)
+		case "sharedapps":
+			var apps []SharedApp
+			note := "Not connected yet"
+			if d.Shared != nil {
+				apps, note = d.Shared()
+			}
+			var rows []q2spot.Row
+			for _, a := range apps {
+				rows = append(rows, q2spot.Row{Kind: "info", Title: a.Name, Subtitle: a.Address})
+			}
+			if len(apps) == 0 && note == "" {
+				note = "None running: open an app with a page, such as EQ Studio"
+			}
+			if note != "" {
+				rows = append(rows, q2spot.Row{Kind: "info", Title: note})
+			}
+			rows = append(rows, q2spot.Row{Kind: "info", Title: "Only your own devices", Subtitle: "Each app still asks for its PIN"})
+			return ok(rows...)
 		case "logs": // Tailscale's logs are set at the app's start: saved, then it starts over
 			s := config.LoadSettings(d.Dir)
 			s.Logs = !s.Logs

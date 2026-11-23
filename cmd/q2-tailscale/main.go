@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -27,6 +28,7 @@ import (
 	"q2-tailscale/internal/q2spot"
 	"q2-tailscale/internal/relay"
 	"q2-tailscale/internal/remote"
+	"q2-tailscale/internal/share"
 	"q2-tailscale/internal/taildrop"
 
 	"tailscale.com/envknob"
@@ -102,9 +104,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	go (&taildrop.Receiver{Src: n, Staged: n.Staged, Logf: logf, Got: a.Got,
 		Dest: func() (string, error) { return config.SaveDir(*dir, config.LoadSettings(*dir)) }}).Run(ctx)
+	apps := &share.Manager{Target: "127.0.0.1", Every: 3 * time.Second, Logf: logf,
+		Allow: func(ctx context.Context, c net.Conn) bool { return n.Owner(ctx, c.RemoteAddr().String()) },
+		Scan:  func() []share.App { return share.Running(filepath.Dir(*statePath), config.CardRoot(*dir), share.Alive) }}
+	var appsTLS atomic.Bool // the app pages are served over HTTPS: chosen, and on for the tailnet
 	go func() {
 		h := pages.Handler(pages.Deps{App: a, Dir: *dir, Logout: n.Logout, Stop: stop, SetOn: a.SetOn, Version: version,
-			Restart: func() { again.Store(true); stop() }, Dev: func() bool { return remote.Available(os.Stat) }})
+			Restart: func() { again.Store(true); stop() }, Dev: func() bool { return remote.Available(os.Stat) },
+			Shared: func() ([]pages.SharedApp, string) { return sharedApps(n.Status(), apps.Shared(), settings.HTTPS, appsTLS.Load()) }})
 		if err := q2spot.Serve(ctx, *socket, h); err != nil {
 			logf("page socket: %v", err)
 		}
@@ -124,6 +131,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 			}
 		}()
 	}
+	if settings.Apps { /* the running card apps' pages, to the owner's devices on the tailnet, once connected */
+		go func() {
+			for ctx.Err() == nil && n.Status().State != "Running" {
+				time.Sleep(time.Second)
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			apps.Listen = n.Listen
+			if settings.HTTPS {
+				if n.Status().CertDomain != "" {
+					apps.Listen = n.ListenTLS
+					appsTLS.Store(true)
+				} else {
+					logf("app pages: HTTPS is off for the tailnet, so they're plain HTTP")
+				}
+			}
+			apps.Run(ctx)
+		}()
+	}
 	if err := a.Run(ctx); err != nil {
 		logf("%v", err)
 		fmt.Fprintln(stderr, err)
@@ -139,6 +166,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	return 0
+}
+
+// sharedApps is the Apps Shared Now page: each app and the address to open it at, the node's HTTPS name
+// over HTTPS, else its Tailscale IP; and a note when there's something to say instead.
+func sharedApps(st node.Status, apps []share.App, chosen, tls bool) ([]pages.SharedApp, string) {
+	if st.State != "Running" || !st.SelfIP.IsValid() {
+		return nil, "Not connected yet"
+	}
+	scheme, host := "http", st.SelfIP.String()
+	if tls {
+		scheme, host = "https", st.CertDomain
+	}
+	out := make([]pages.SharedApp, len(apps))
+	for i, a := range apps {
+		out[i] = pages.SharedApp{Name: a.Name, Address: fmt.Sprintf("%s://%s:%d", scheme, host, a.Port)}
+	}
+	note := ""
+	if chosen && !tls {
+		note = "HTTPS is off for your tailnet: turn it on in Tailscale's admin console, under DNS"
+	}
+	return out, note
 }
 
 // setLogs switches Tailscale's own logs off unless on: logtail's uploads and its buffers on the card

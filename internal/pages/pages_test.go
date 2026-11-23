@@ -187,7 +187,7 @@ func TestRemoveForward(t *testing.T) {
 func TestSettingsFields(t *testing.T) {
 	w := newWorld(t, running(nas))
 	r := w.h("settings", nil)
-	if strings.Join(titles(r), "|") != "action:Start with Wi-Fi|action:Send Logs to Tailscale|list:Save To|field:Extra Ports:|field:Device Name:|list:About|action:Sign Out" ||
+	if strings.Join(titles(r), "|") != "action:Start with Wi-Fi|action:Send Logs to Tailscale|list:Save To|field:Extra Ports:|field:Device Name:|action:Q2 Apps on Tailscale|list:About|action:Sign Out" ||
 		r.Rows[3].Subtitle != "None" || r.Rows[4].Subtitle != "q2-pod" {
 		t.Fatalf("%+v", r.Rows)
 	}
@@ -489,6 +489,41 @@ func TestRemoteRowOnlyOnDeveloperFirmware(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if restarts != 1 {
+		t.Fatalf("restarts %d", restarts)
+	}
+}
+
+// Q2 Apps on Tailscale is off unless chosen; on, it shows Use HTTPS and what's shared, with the address to
+// open each at, and each switch saves and restarts.
+func TestAppsOnTailscale(t *testing.T) {
+	w := newWorld(t, running())
+	restarts := 0
+	shared := []SharedApp{{Name: "EQ Studio", Address: "https://q2-pod.tail1234.ts.net:8020"}}
+	w.h = Handler(Deps{App: w.app, Dir: w.dir, Caps: func() string { return "switch" }, Restart: func() { restarts++ },
+		Shared: func() ([]SharedApp, string) { return shared, "" }})
+	rows := func() string { return strings.Join(titles(w.h("settings", nil)), "|") }
+	if strings.Contains(rows(), "Use HTTPS") || !strings.Contains(rows(), "switch:Q2 Apps on Tailscale") {
+		t.Fatal(rows())
+	}
+	w.h("apps", nil)
+	if !config.LoadSettings(w.dir).Apps || !strings.Contains(rows(), "switch:Use HTTPS|list:Apps Shared Now") {
+		t.Fatal(rows())
+	}
+	w.h("https", nil)
+	if !config.LoadSettings(w.dir).HTTPS {
+		t.Fatal("HTTPS not saved")
+	}
+	r := w.h("sharedapps", nil)
+	if r.Rows[0].Title != "EQ Studio" || r.Rows[0].Subtitle != "https://q2-pod.tail1234.ts.net:8020" {
+		t.Fatalf("%+v", r.Rows)
+	}
+	shared = nil
+	if r := w.h("sharedapps", nil); !strings.HasPrefix(r.Rows[0].Title, "None running") {
+		t.Fatalf("%+v", r.Rows)
+	}
+	for end := time.Now().Add(2 * time.Second); restarts < 2 && time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+	}
+	if restarts != 2 {
 		t.Fatalf("restarts %d", restarts)
 	}
 }

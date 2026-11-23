@@ -3,8 +3,12 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"net/netip"
 	"strings"
 	"testing"
+
+	"q2-tailscale/internal/node"
+	"q2-tailscale/internal/share"
 )
 
 func TestVersionFlag(t *testing.T) {
@@ -110,5 +114,24 @@ func TestDebugFlagKeepsThem(t *testing.T) {
 	tailscaleLogf(logf, false)("[v1] dropped")
 	if len(got) != 1 || got[0] != "[v1] kept" {
 		t.Fatalf("logged %q", got)
+	}
+}
+
+// Apps Shared Now: each app at the node's Tailscale IP over HTTP, or its HTTPS name over HTTPS, and a
+// note when HTTPS was chosen but is off for the tailnet.
+func TestSharedAppsAddresses(t *testing.T) {
+	st := node.Status{State: "Running", SelfIP: netip.MustParseAddr("100.64.0.5"), CertDomain: "q2-pod.tail1234.ts.net"}
+	apps := []share.App{{ID: "eq-studio", Name: "EQ Studio", Port: 8020}}
+	if got, note := sharedApps(st, apps, false, false); got[0].Address != "http://100.64.0.5:8020" || note != "" {
+		t.Fatalf("%+v %q", got, note)
+	}
+	if got, _ := sharedApps(st, apps, true, true); got[0].Address != "https://q2-pod.tail1234.ts.net:8020" {
+		t.Fatalf("%+v", got)
+	}
+	if _, note := sharedApps(st, apps, true, false); !strings.Contains(note, "HTTPS is off") {
+		t.Fatalf("%q", note)
+	}
+	if _, note := sharedApps(node.Status{State: "Starting"}, apps, false, false); note != "Not connected yet" {
+		t.Fatalf("%q", note)
 	}
 }

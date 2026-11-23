@@ -6,10 +6,10 @@ package remote
 
 import (
 	"context"
-	"io"
 	"net"
 	"os"
-	"sync"
+
+	"q2-tailscale/internal/forward"
 )
 
 // Binary is q2remote: developer firmware builds have it, release builds never do.
@@ -33,43 +33,5 @@ type Forwarder struct {
 
 // Run listens until ctx ends; the error is the listener's, when it couldn't open.
 func (f *Forwarder) Run(ctx context.Context) error {
-	l, err := f.Listen("tcp", ":"+Port)
-	if err != nil {
-		return err
-	}
-	go func() { <-ctx.Done(); l.Close() }()
-	for {
-		c, err := l.Accept()
-		if err != nil {
-			return nil
-		}
-		go f.pipe(ctx, c)
-	}
-}
-
-func (f *Forwarder) pipe(ctx context.Context, c net.Conn) {
-	defer c.Close()
-	var d net.Dialer
-	up, err := d.DialContext(ctx, "tcp", f.Target)
-	if err != nil {
-		if f.Logf != nil {
-			f.Logf("q2remote over the tailnet: %v", err)
-		}
-		return
-	}
-	defer up.Close()
-	var wg sync.WaitGroup
-	wg.Add(2)
-	half := func(dst, src net.Conn) {
-		defer wg.Done()
-		io.Copy(dst, src)
-		if cw, ok := dst.(interface{ CloseWrite() error }); ok {
-			cw.CloseWrite()
-		} else {
-			dst.Close()
-		}
-	}
-	go half(up, c)
-	go half(c, up)
-	wg.Wait()
+	return (&forward.Forwarder{Listen: f.Listen, Port: Port, Target: f.Target, Name: "q2remote over the tailnet", Logf: f.Logf}).Run(ctx)
 }
