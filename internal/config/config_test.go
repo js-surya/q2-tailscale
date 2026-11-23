@@ -219,3 +219,19 @@ func TestLogsAreOffUnlessTheSettingsSayOn(t *testing.T) {
 		t.Fatalf("settings %q", b)
 	}
 }
+
+// The developer option is kept with the other settings, off unless chosen.
+func TestRemoteSetting(t *testing.T) {
+	dir := t.TempDir()
+	if LoadSettings(dir).Remote {
+		t.Fatal("on by default")
+	}
+	s := LoadSettings(dir)
+	s.Remote = true
+	if err := SaveSettings(dir, s); err != nil {
+		t.Fatal(err)
+	}
+	if !LoadSettings(dir).Remote {
+		t.Fatal("not kept")
+	}
+}

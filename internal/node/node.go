@@ -200,6 +200,11 @@ func (n *TSNet) Status() Status {
 	return n.st
 }
 
+// Listen listens on the node's tailnet addresses (remote's forwarder: q2remote's port).
+func (n *TSNet) Listen(network, addr string) (net.Listener, error) {
+	return n.srv.Listen(network, addr)
+}
+
 func (n *TSNet) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	return n.srv.Dial(ctx, network, addr)
 }

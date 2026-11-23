@@ -37,6 +37,7 @@ type Settings struct {
 	Manual   bool     // not started with Wi-Fi: only when opened (q2app without wifi=1)
 	Save     string   // where Taildrop files go, relative to the card; "" is DefaultSave
 	Logs     bool     // Tailscale's logs uploaded to it (and buffered on the card); off unless chosen
+	Remote   bool     // q2remote passed through the tailnet (developer firmware only); off unless chosen
 }
 
 // DefaultSave is the folder on the card Taildrop files go to unless the settings say otherwise.
@@ -151,6 +152,8 @@ func LoadSettings(dir string) Settings {
 			s.Save = strings.TrimSpace(v)
 		case "logs":
 			s.Logs = strings.TrimSpace(v) == "on"
+		case "remote":
+			s.Remote = strings.TrimSpace(v) == "on"
 		}
 	}
 	return s
@@ -174,6 +177,9 @@ func SaveSettings(dir string, s Settings) error {
 	}
 	if s.Logs {
 		text += "logs=on\n"
+	}
+	if s.Remote {
+		text += "remote=on\n"
 	}
 	return writeWhole(filepath.Join(dir, "settings"), []byte(text))
 }

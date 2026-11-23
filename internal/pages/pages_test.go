@@ -455,3 +455,40 @@ func TestSendLogsSwitchSavesAndRestarts(t *testing.T) {
 		t.Fatal("still on")
 	}
 }
+
+// The developer row shows on a developer firmware only, and its switch saves and restarts.
+func TestRemoteRowOnlyOnDeveloperFirmware(t *testing.T) {
+	w := newWorld(t, running())
+	restarts := 0
+	has := func(r q2spot.Reply) bool {
+		for _, row := range r.Rows {
+			if row.URI == "remote" {
+				return true
+			}
+		}
+		return false
+	}
+	w.h = Handler(Deps{App: w.app, Dir: w.dir, Caps: func() string { return "switch" }, Dev: func() bool { return false }})
+	if has(w.h("settings", nil)) {
+		t.Fatal("shown on a release firmware")
+	}
+	if r := w.h("remote", nil); config.LoadSettings(w.dir).Remote || r.Message == "" {
+		t.Fatal("switched on a release firmware")
+	}
+	w.h = Handler(Deps{App: w.app, Dir: w.dir, Caps: func() string { return "switch" }, Dev: func() bool { return true },
+		Restart: func() { restarts++ }})
+	if !has(w.h("settings", nil)) {
+		t.Fatal("not shown on a developer firmware")
+	}
+	w.h("remote", nil)
+	if !config.LoadSettings(w.dir).Remote {
+		t.Fatal("not saved")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for restarts == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if restarts != 1 {
+		t.Fatalf("restarts %d", restarts)
+	}
+}

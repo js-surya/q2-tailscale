@@ -26,6 +26,7 @@ import (
 	"q2-tailscale/internal/pages"
 	"q2-tailscale/internal/q2spot"
 	"q2-tailscale/internal/relay"
+	"q2-tailscale/internal/remote"
 	"q2-tailscale/internal/taildrop"
 
 	"tailscale.com/envknob"
@@ -103,11 +104,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Dest: func() (string, error) { return config.SaveDir(*dir, config.LoadSettings(*dir)) }}).Run(ctx)
 	go func() {
 		h := pages.Handler(pages.Deps{App: a, Dir: *dir, Logout: n.Logout, Stop: stop, SetOn: a.SetOn, Version: version,
-			Restart: func() { again.Store(true); stop() }})
+			Restart: func() { again.Store(true); stop() }, Dev: func() bool { return remote.Available(os.Stat) }})
 		if err := q2spot.Serve(ctx, *socket, h); err != nil {
 			logf("page socket: %v", err)
 		}
 	}()
+	if settings.Remote && remote.Available(os.Stat) { /* q2remote over the tailnet, once connected */
+		go func() {
+			for ctx.Err() == nil && n.Status().State != "Running" {
+				time.Sleep(time.Second)
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			logf("q2remote over the tailnet on port %s", remote.Port)
+			f := &remote.Forwarder{Listen: n.Listen, Target: "127.0.0.1:" + remote.Port, Logf: logf}
+			if err := f.Run(ctx); err != nil {
+				logf("q2remote over the tailnet: %v", err)
+			}
+		}()
+	}
 	if err := a.Run(ctx); err != nil {
 		logf("%v", err)
 		fmt.Fprintln(stderr, err)

@@ -40,6 +40,7 @@ type Deps struct {
 	Caps     func() string                     // the firmware's /tmp/q2-addon.caps (FirmwareCaps)
 	Restart  func()                            // the app starts over, its changes undone first (Send Logs)
 	Version  string                            // the app's, for About
+	Dev      func() bool                       // a developer firmware (q2remote there): its option shown
 }
 
 // FirmwareCaps reads the words Q2 Pod writes for card apps: what its pages can draw.
@@ -175,13 +176,30 @@ func Handler(d Deps) q2spot.Handler {
 			if save == "" {
 				save = config.DefaultSave
 			}
-			return ok(toggle(d.Caps(), "autostart", "Start with Wi-Fi", config.AutoStart(d.Dir)),
+			rows := []q2spot.Row{toggle(d.Caps(), "autostart", "Start with Wi-Fi", config.AutoStart(d.Dir)),
 				toggle(d.Caps(), "logs", "Send Logs to Tailscale", s.Logs),
 				q2spot.Row{Kind: "list", URI: "saveto", Title: "Save To", Subtitle: save},
 				q2spot.Row{Kind: "field", URI: "setports", Title: "Extra Ports:", Subtitle: ports},
-				q2spot.Row{Kind: "field", URI: "sethost", Title: "Device Name:", Subtitle: s.Hostname},
-				q2spot.Row{Kind: "list", URI: "about", Title: "About"},
+				q2spot.Row{Kind: "field", URI: "sethost", Title: "Device Name:", Subtitle: s.Hostname}}
+			if d.Dev != nil && d.Dev() { /* a developer firmware: its option, nowhere else */
+				rows = append(rows, toggle(d.Caps(), "remote", "q2remote over Tailscale", s.Remote))
+			}
+			rows = append(rows, q2spot.Row{Kind: "list", URI: "about", Title: "About"},
 				q2spot.Row{Kind: "action", URI: "signout", Title: "Sign Out"})
+			return ok(rows...)
+		case "remote": // q2remote through the tailnet, set at the app's start: saved, then it starts over
+			if d.Dev == nil || !d.Dev() {
+				return fail("Only on a developer firmware")
+			}
+			s := config.LoadSettings(d.Dir)
+			s.Remote = !s.Remote
+			if err := config.SaveSettings(d.Dir, s); err != nil {
+				return fail("Couldn't save: %v", err)
+			}
+			if d.Restart != nil {
+				go func() { time.Sleep(300 * time.Millisecond); d.Restart() }() // the reply goes first
+			}
+			return say("Restarting with q2remote over Tailscale " + onOff(s.Remote))
 		case "logs": // Tailscale's logs are set at the app's start: saved, then it starts over
 			s := config.LoadSettings(d.Dir)
 			s.Logs = !s.Logs
