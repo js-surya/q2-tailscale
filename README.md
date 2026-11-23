@@ -90,6 +90,19 @@ asks no router for open ports (UPnP, NAT-PMP, PCP), so its traffic wakes the rad
   on the Q2, or turn **Smart Wi-Fi** off until it's done. A file is only moved into your folder once it has
   arrived whole, so a broken transfer leaves nothing half-written; send it again.
 
+## Developer option: q2remote over Tailscale
+
+On a **developer build** of Q2 Pod (one with `q2remote`, its developer shell), Settings shows
+**q2remote over Tailscale**, off unless you turn it on. On, the app passes connections to its Tailscale
+address on q2remote's port (2302) to q2remote on the Q2, and nothing else, so a developer can reach their
+Q2 from anywhere on their tailnet, even on a network that keeps devices apart (a university's, say).
+q2remote still asks for its key. Release builds of Q2 Pod have no `q2remote`: the row never shows there,
+and nothing is passed on.
+
+Smart Wi-Fi doesn't count a q2remote session as using the network, so it can switch Wi-Fi off mid-session
+after its 5 minutes. While you work remotely, turn **Smart Wi-Fi** off (or keep the app's page open on the
+Q2), and turn it back on after.
+
 ## Undoing its changes
 
 The app's changes to the system are made at start and undone at stop: its lines in `/etc/resolv.conf`
