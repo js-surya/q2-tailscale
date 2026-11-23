@@ -2,3 +2,4 @@ name=Tailscale
 qr=1
 wifi=1
 row=network
+root=1

@@ -51,8 +51,10 @@ affiliated with or endorsed by Tailscale.
 
 ### What it can't protect
 
-- **Every card app on the Q2 runs as root.** Any other app you install could read Tailscale's login. Only
-  install apps you trust.
+- **Other apps, on older firmware.** Up to Q2 Pod 1.9.0 every card app runs as root, so any other app
+  you install could read Tailscale's login: only install apps you trust. Newer firmware runs card apps
+  without root, so they can't read it; Tailscale keeps root (`root=1`) to save its login and reach
+  your machines.
 - **What's on the card:** the app's settings, Taildrop's folder, and a cache of your tailnet's map (your
   machines' names and Tailscale IPs, DNS settings and access rules), with no keys. Anyone with the card
   can read that.
