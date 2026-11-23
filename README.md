@@ -106,8 +106,9 @@ from a phone or computer with Tailscale on, then sign in with the PIN under the 
 - Only apps running now are shared; one that stops is taken off.
 - **Use HTTPS** serves them at the Q2's name with Tailscale's certificate instead, such as
   `https://q2-pod.tail1234.ts.net:8020`. It needs HTTPS turned on for your tailnet in the
-  [admin console](https://login.tailscale.com/admin/dns) (DNS → HTTPS Certificates); without it, the
-  pages stay plain HTTP and Apps Shared Now says so. The Q2's name goes into Tailscale's public
+  [admin console](https://login.tailscale.com/admin/dns) (DNS → HTTPS Certificates). The app gets the
+  certificate when it starts; without HTTPS on, or if the certificate can't be had, the pages stay
+  plain HTTP (which Tailscale encrypts anyway) and Apps Shared Now says why. The Q2's name goes into Tailscale's public
   certificate log, as every HTTPS name does. The first visit takes a few seconds while the certificate
   is fetched.
 - Turn **Smart Wi-Fi** off while you use them from afar, or it may turn the Q2's Wi-Fi off.

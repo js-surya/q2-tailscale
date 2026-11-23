@@ -3,6 +3,7 @@ module q2-tailscale
 go 1.27.4
 
 require (
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20260113154411-7d0074ccc6f1
 	golang.org/x/net v0.63.0
 	tailscale.com v1.104.7
 )

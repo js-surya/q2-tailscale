@@ -217,6 +217,17 @@ func (n *TSNet) ListenTLS(network, addr string) (net.Listener, error) {
 	return n.srv.ListenTLS(network, addr)
 }
 
+// Cert gets (or renews) the node's HTTPS certificate for domain, as ListenTLS would at its first
+// connection; an error says why it can't.
+func (n *TSNet) Cert(ctx context.Context, domain string) error {
+	lc, err := n.srv.LocalClient()
+	if err != nil {
+		return err
+	}
+	_, _, err = lc.CertPair(ctx, domain)
+	return err
+}
+
 // Owner is whether a connection from remote (ip:port on the tailnet) comes from one of the owner's own
 // devices: the same user, not a tagged machine or one shared in from another tailnet.
 func (n *TSNet) Owner(ctx context.Context, remote string) bool {

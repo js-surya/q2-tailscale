@@ -31,6 +31,8 @@ import (
 	"q2-tailscale/internal/share"
 	"q2-tailscale/internal/taildrop"
 
+	_ "golang.org/x/crypto/x509roots/fallback" // the Q2 has no root certificates: HTTPS's certificate comes from Let's Encrypt
+
 	"tailscale.com/envknob"
 	"tailscale.com/ipn/store"
 	"tailscale.com/logtail"
@@ -107,11 +109,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	apps := &share.Manager{Target: "127.0.0.1", Every: 3 * time.Second, Logf: logf,
 		Allow: func(ctx context.Context, c net.Conn) bool { return n.Owner(ctx, c.RemoteAddr().String()) },
 		Scan:  func() []share.App { return share.Running(filepath.Dir(*statePath), config.CardRoot(*dir), share.Alive) }}
-	var appsTLS atomic.Bool // the app pages are served over HTTPS: chosen, and on for the tailnet
+	var appsNote atomic.Value // why HTTPS was chosen but isn't used, for Apps Shared Now
+	appsNote.Store("")
 	go func() {
 		h := pages.Handler(pages.Deps{App: a, Dir: *dir, Logout: n.Logout, Stop: stop, SetOn: a.SetOn, Version: version,
 			Restart: func() { again.Store(true); stop() }, Dev: func() bool { return remote.Available(os.Stat) },
-			Shared: func() ([]pages.SharedApp, string) { return sharedApps(n.Status(), apps.Shared(), settings.HTTPS, appsTLS.Load()) }})
+			Shared: func() ([]pages.SharedApp, string) { return sharedApps(n.Status(), apps.Shared(), appsNote.Load().(string)) }})
 		if err := q2spot.Serve(ctx, *socket, h); err != nil {
 			logf("page socket: %v", err)
 		}
@@ -141,11 +144,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 			}
 			apps.Listen = n.Listen
 			if settings.HTTPS {
-				if n.Status().CertDomain != "" {
-					apps.Listen = n.ListenTLS
-					appsTLS.Store(true)
+				// HTTPS only with the certificate in hand, got now: a page that can't be opened at all is
+				// worse than one over plain HTTP, which the tailnet encrypts anyway.
+				if note := httpsReady(ctx, n.Status().CertDomain, n.Cert); note != "" {
+					appsNote.Store(note)
+					logf("app pages: plain HTTP: %s", note)
 				} else {
-					logf("app pages: HTTPS is off for the tailnet, so they're plain HTTP")
+					apps.Listen = n.ListenTLS
 				}
 			}
 			apps.Run(ctx)
@@ -170,23 +175,38 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // sharedApps is the Apps Shared Now page: each app and the address to open it at, the node's HTTPS name
 // over HTTPS, else its Tailscale IP; and a note when there's something to say instead.
-func sharedApps(st node.Status, apps []share.App, chosen, tls bool) ([]pages.SharedApp, string) {
+// tls: served over HTTPS (no note); note: why not, when HTTPS was chosen.
+func sharedApps(st node.Status, apps []share.App, note string) ([]pages.SharedApp, string) {
 	if st.State != "Running" || !st.SelfIP.IsValid() {
 		return nil, "Not connected yet"
 	}
 	scheme, host := "http", st.SelfIP.String()
-	if tls {
+	if tls := note == "" && st.CertDomain != "" && httpsChosen.Load(); tls {
 		scheme, host = "https", st.CertDomain
 	}
 	out := make([]pages.SharedApp, len(apps))
 	for i, a := range apps {
 		out[i] = pages.SharedApp{Name: a.Name, Address: fmt.Sprintf("%s://%s:%d", scheme, host, a.Port)}
 	}
-	note := ""
-	if chosen && !tls {
-		note = "HTTPS is off for your tailnet: turn it on in Tailscale's admin console, under DNS"
-	}
 	return out, note
+}
+
+// httpsChosen is whether the pages went to HTTPS (set once, at their start).
+var httpsChosen atomic.Bool
+
+// httpsReady is "" when HTTPS can be used for the node's name (domain: "" while HTTPS is off for the
+// tailnet), its certificate got with cert within a minute; else what to tell the owner.
+func httpsReady(ctx context.Context, domain string, cert func(context.Context, string) error) string {
+	if domain == "" {
+		return "HTTPS is off for your tailnet: turn it on in Tailscale's admin console, under DNS"
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	if err := cert(ctx, domain); err != nil {
+		return "Couldn't get the HTTPS certificate, so plain HTTP: " + err.Error()
+	}
+	httpsChosen.Store(true)
+	return ""
 }
 
 // setLogs switches Tailscale's own logs off unless on: logtail's uploads and its buffers on the card
