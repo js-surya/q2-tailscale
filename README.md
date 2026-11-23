@@ -85,10 +85,7 @@ asks no router for open ports (UPnP, NAT-PMP, PCP), so its traffic wakes the rad
   control the Q2 from Shanling's app, turn it off in **System settings → Wireless → SyncLink**, below
   the Bluetooth switch (or set it to Bluetooth).
 - Files sent with Taildrop arrive only while the Q2's Wi-Fi is on. Opening the app's page turns it on.
-- **Sending a big file?** Smart Wi-Fi doesn't count Taildrop as using the network, so it can switch Wi-Fi
-  off in the middle of a transfer that runs past its 5 minutes. For big transfers, keep the app's page open
-  on the Q2, or turn **Smart Wi-Fi** off until it's done. A file is only moved into your folder once it has
-  arrived whole, so a broken transfer leaves nothing half-written; send it again.
+- Big Taildrop files: turn **Smart Wi-Fi** off until they arrive, or it may cut the transfer.
 
 ## Developer option: q2remote over Tailscale
 
@@ -99,9 +96,7 @@ Q2 from anywhere on their tailnet, even on a network that keeps devices apart (a
 q2remote still asks for its key. Release builds of Q2 Pod have no `q2remote`: the row never shows there,
 and nothing is passed on.
 
-Smart Wi-Fi doesn't count a q2remote session as using the network, so it can switch Wi-Fi off mid-session
-after its 5 minutes. While you work remotely, turn **Smart Wi-Fi** off (or keep the app's page open on the
-Q2), and turn it back on after.
+Turn **Smart Wi-Fi** off while you work remotely, or it may cut the session.
 
 ## Undoing its changes
 
