@@ -42,6 +42,7 @@ type world struct {
 	stopped atomic.Bool
 	logouts int
 	renews  int
+	paths   map[netip.Addr]string // how each machine is reached, nil: not known
 	now     time.Time
 	taken   map[uint16]bool
 	ons     []bool // each SetOn
@@ -55,6 +56,7 @@ func newWorld(t *testing.T, st node.Status) *world {
 	w.h = Handler(Deps{App: w.app, Dir: w.dir,
 		Logout:   func(context.Context) error { w.logouts++; return nil },
 		Reauth:   func(context.Context) error { w.renews++; return nil },
+		Paths:    func() map[netip.Addr]string { return w.paths },
 		Stop:     func() { w.stopped.Store(true) },
 		PortFree: func(p uint16) bool { return !w.taken[p] },
 		Now:      func() time.Time { return w.now },
@@ -560,5 +562,30 @@ func TestRenewSignIn(t *testing.T) {
 	w2 := newWorld(t, running(nas)) // key expiry off
 	if slices.ContainsFunc(w2.h("menu", nil).Rows, func(r q2spot.Row) bool { return r.URI == "renew" }) {
 		t.Fatal("Renew Sign-In without an expiry")
+	}
+}
+
+// Machines say how each online one is reached, read while the page is open, and a tip when one goes
+// through Tailscale's relays; the page asks again so it follows a path that changes.
+func TestMachinesShowThePath(t *testing.T) {
+	tv := node.Peer{Name: "tv", FQDN: "tv.tail1234.ts.net", IP: netip.MustParseAddr("100.101.1.4"), Online: true}
+	w := newWorld(t, running(nas, laptop, tv))
+	w.paths = map[netip.Addr]string{nas.IP: "direct", tv.IP: "via relay (fra)", laptop.IP: "direct"}
+	r := w.h("machines", nil)
+	if r.Rows[0].Subtitle != "100.101.1.3 · offline" || r.Rows[1].Subtitle != "100.101.1.2 · online · direct" ||
+		r.Rows[2].Subtitle != "100.101.1.4 · online · via relay (fra)" {
+		t.Fatalf("%+v", r.Rows)
+	}
+	last := r.Rows[len(r.Rows)-1]
+	if len(r.Rows) != 4 || last.Kind != "info" || !strings.HasPrefix(last.Title, "Relayed:") {
+		t.Fatalf("tip: %+v", r.Rows)
+	}
+	if r.Message != "refresh" {
+		t.Fatalf("message %q", r.Message)
+	}
+
+	w.paths = map[netip.Addr]string{nas.IP: "direct"}
+	if r := w.h("machines", nil); len(r.Rows) != 3 {
+		t.Fatalf("no relay, no tip: %+v", r.Rows)
 	}
 }

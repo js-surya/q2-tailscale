@@ -27,6 +27,9 @@ affiliated with or endorsed by Tailscale.
   choose.
 - **Q2 apps on Tailscale:** open the page of an app running on the Q2, such as EQ Studio, from your
   phone or computer on another network (below). Off unless you turn it on.
+- **How each machine is reached:** Machines shows "direct" or "via relay (fra)" for the ones in use.
+  Through Tailscale's relay servers, lossless music may stutter; the page says so. It's read from what
+  Tailscale already knows, only while the page is open: nothing extra is sent.
 - **Status bar icon:** connected, off or warning.
 - **Renew before the sign-in expires:** a week before the Q2's key expires, its page says so, the
   status bar icon gets its warning mark, and **Renew Sign-In** asks for a new sign-in by QR code while it

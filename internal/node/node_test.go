@@ -159,3 +159,22 @@ func TestExpiresSoon(t *testing.T) {
 		}
 	}
 }
+
+// PathOf: how a machine is reached now, from the status tsnet keeps; nothing while there's been no
+// recent traffic to it, as the path isn't known then.
+func TestPathOf(t *testing.T) {
+	for _, c := range []struct {
+		p    ipnstate.PeerStatus
+		want string
+	}{
+		{ipnstate.PeerStatus{Active: true, CurAddr: "203.0.113.7:41641", Relay: "fra"}, "direct"},
+		{ipnstate.PeerStatus{Active: true, Relay: "fra"}, "via relay (fra)"},
+		{ipnstate.PeerStatus{Active: true, PeerRelay: "100.64.0.9:7777:1", Relay: "fra"}, "via peer relay"},
+		{ipnstate.PeerStatus{Relay: "fra"}, ""}, // idle
+		{ipnstate.PeerStatus{Active: true}, ""},
+	} {
+		if got := PathOf(&c.p); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.p, got, c.want)
+		}
+	}
+}

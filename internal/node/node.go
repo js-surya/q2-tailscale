@@ -365,6 +365,45 @@ func (n *TSNet) Logout(ctx context.Context) error {
 	return err
 }
 
+// PathOf is how a machine is reached now, as tailscale status shows it: "direct", "via relay (fra)"
+// (Tailscale's relay servers, by region) or "via peer relay"; "" without recent traffic to it, when
+// the path isn't known. Read from the status tsnet keeps anyway: nothing is sent to find it.
+func PathOf(p *ipnstate.PeerStatus) string {
+	switch {
+	case !p.Active:
+		return ""
+	case p.CurAddr != "":
+		return "direct"
+	case p.PeerRelay != "":
+		return "via peer relay"
+	case p.Relay != "":
+		return "via relay (" + p.Relay + ")"
+	}
+	return ""
+}
+
+// Paths is each machine's path now (PathOf), by its Tailscale IPv4 address; read on demand, as the
+// cached Status leaves the engine's statistics out.
+func (n *TSNet) Paths(ctx context.Context) map[netip.Addr]string {
+	lc, err := n.srv.LocalClient()
+	if err != nil {
+		return nil
+	}
+	st, err := lc.Status(ctx)
+	if err != nil {
+		return nil
+	}
+	out := map[netip.Addr]string{}
+	for _, p := range st.Peer {
+		if ip := ipv4(p.TailscaleIPs); ip.IsValid() {
+			if path := PathOf(p); path != "" {
+				out[ip] = path
+			}
+		}
+	}
+	return out
+}
+
 // Reauth is tailscale up --force-reauth: a new sign-in link while the node stays connected, so a sign-in
 // about to expire is renewed and the Q2 keeps its name and Tailscale IP.
 func (n *TSNet) Reauth(ctx context.Context) error {

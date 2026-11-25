@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -34,6 +35,7 @@ type Deps struct {
 	Dir      string
 	Logout   func(context.Context) error
 	Reauth   func(context.Context) error // a new sign-in link, connected meanwhile (Renew Sign-In)
+	Paths    func() map[netip.Addr]string // how each machine is reached now (node.PathOf), read while Machines is open
 	Stop     func()
 	PortFree func(uint16) bool
 	Now      func() time.Time
@@ -130,7 +132,11 @@ func Handler(d Deps) q2spot.Handler {
 			}
 			return say("Starts with Wi-Fi")
 		case "machines":
-			return machines(d.App.Status())
+			var paths map[netip.Addr]string
+			if d.Paths != nil {
+				paths = d.Paths()
+			}
+			return machines(d.App.Status(), paths)
 		case "forwards":
 			return forwards(d)
 		case "addfwd":
@@ -460,21 +466,34 @@ func menu(st node.Status, warnings []node.Warning, received string, power q2spot
 	return r
 }
 
-func machines(st node.Status) q2spot.Reply {
+// machines lists the tailnet's machines, each online one with how it's reached when that's known
+// (paths), and a tip when one goes through Tailscale's relays, which lossless streams may outrun.
+func machines(st node.Status, paths map[netip.Addr]string) q2spot.Reply {
 	peers := slices.Clone(st.Peers)
 	slices.SortFunc(peers, func(a, b node.Peer) int { return strings.Compare(a.Name, b.Name) })
 	var rows []q2spot.Row
+	relayed := false
 	for _, p := range peers {
-		state := "offline"
+		sub := p.IP.String() + " · offline"
 		if p.Online {
-			state = "online"
+			sub = p.IP.String() + " · online"
+			if path := paths[p.IP]; path != "" {
+				sub += " · " + path
+				relayed = relayed || strings.HasPrefix(path, "via relay")
+			}
 		}
-		rows = append(rows, q2spot.Row{Kind: "info", Title: p.Name, Subtitle: p.IP.String() + " · " + state})
+		rows = append(rows, q2spot.Row{Kind: "info", Title: p.Name, Subtitle: sub})
 	}
 	if rows == nil {
 		return ok(q2spot.Row{Kind: "info", Title: "No machines", Subtitle: "Sign in, or add one to your tailnet"})
 	}
-	return ok(rows...)
+	if relayed {
+		rows = append(rows, q2spot.Row{Kind: "info", Title: "Relayed: lossless music may stutter",
+			Subtitle: "Tailscale couldn't connect directly. Another Wi-Fi, or allowing UDP on your home router, usually fixes it."})
+	}
+	r := ok(rows...)
+	r.Message = "refresh" // asked again while on screen: a path found once traffic starts shows
+	return r
 }
 
 func forwards(d Deps) q2spot.Reply {
