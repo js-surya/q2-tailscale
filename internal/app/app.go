@@ -177,6 +177,10 @@ func (a *App) Reconcile() {
 	case st.State == "NeedsLogin" && st.AuthURL != "":
 		a.authURL, a.signedAt = st.AuthURL, time.Time{}
 		state = signIn(st.AuthURL, "Scan to sign in to Tailscale") + "bar=off\n"
+	case st.State == "Running" && st.AuthURL != "":
+		// renewing the sign-in (Renew Sign-In): still connected, the QR page shows the new link's code
+		a.authURL, a.signedAt = st.AuthURL, time.Time{}
+		state = signIn(st.AuthURL, "Scan to renew Tailscale's sign-in") + "bar=warn\n"
 	case st.State == "Running" && a.authURL != "" && a.keepCode():
 		// just signed in: the QR page, still open, keeps its code and says so (it reads a file
 		// without one as no Wi-Fi), for a minute
@@ -269,13 +273,23 @@ func signIn(url, note string) string {
 	return "addr=" + addr + "\nqr=" + c.Hex() + "\nqrsize=" + strconv.Itoa(c.Size) + "\nnote=" + note + "\n"
 }
 
+// expiryWarning: the sign-in ends in days; then the Q2 leaves the tailnet until it signs in again.
+func expiryWarning(days int) node.Warning {
+	when := "in 1 day"
+	switch {
+	case days <= 0:
+		when = "now"
+	case days > 1:
+		when = "in " + strconv.Itoa(days) + " days"
+	}
+	return node.Warning{Title: "Sign-in expires " + when,
+		Text: "Then the Q2 leaves your tailnet until it signs in again. Renew Sign-In below keeps it, with the same name and address."}
+}
+
 // keepCode is whether the sign-in's minute on the QR page is still running; it starts at the first
 // reconcile that sees the node signed in, and its end forgets the link.
 func (a *App) keepCode() bool {
-	now := time.Now()
-	if a.Now != nil {
-		now = a.Now()
-	}
+	now := a.now()
 	if a.signedAt.IsZero() {
 		a.signedAt = now
 	}
@@ -310,6 +324,9 @@ func (a *App) Warnings() []node.Warning {
 	ws := slices.Clone(st.Warnings)
 	if a.dnsDown.Load() {
 		ws = append(ws, dnsWarning)
+	}
+	if days, ok := st.ExpiresSoon(a.now()); ok {
+		ws = append(ws, expiryWarning(days))
 	}
 	if a.KeysOnCard != nil {
 		ws = append(ws, node.Warning{Title: "Login kept on the SD card",

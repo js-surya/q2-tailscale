@@ -42,6 +42,7 @@ func (n *fakeNode) Start(context.Context) error {
 func (n *fakeNode) Status() node.Status          { n.mu.Lock(); defer n.mu.Unlock(); return n.st }
 func (n *fakeNode) Updates() <-chan struct{}     { return n.up }
 func (n *fakeNode) Logout(context.Context) error { n.logouts++; return nil }
+func (n *fakeNode) Reauth(context.Context) error { return nil }
 func (n *fakeNode) SetRunning(_ context.Context, on bool) error {
 	n.mu.Lock()
 	n.wants = append(n.wants, on)
@@ -623,5 +624,43 @@ func TestStatusFileWrittenOnlyWhenItChanges(t *testing.T) {
 	w.app.Reconcile()
 	if fi, _ := os.Stat(path); fi.ModTime().Equal(old) {
 		t.Fatal("a change not written")
+	}
+}
+
+// A week before the sign-in expires it's a warning, and the icon gets its mark; further off, nothing.
+func TestExpiringSignInIsAWarning(t *testing.T) {
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	st := running(nas)
+	st.KeyExpiry = now.Add(3 * 24 * time.Hour)
+	w := newWorld(t, st)
+	w.app.Now = func() time.Time { return now }
+	w.app.Reconcile()
+	ws := w.app.Warnings()
+	if len(ws) != 1 || ws[0].Title != "Sign-in expires in 3 days" || !strings.Contains(ws[0].Text, "Renew Sign-In") {
+		t.Fatalf("%+v", ws)
+	}
+	if got := w.file("q2-tailscale.state"); got != "bar=warn\n" {
+		t.Fatalf("state %q", got)
+	}
+
+	st.KeyExpiry = now.Add(10 * 24 * time.Hour)
+	w2 := newWorld(t, st)
+	w2.app.Now = func() time.Time { return now }
+	if ws := w2.app.Warnings(); ws != nil {
+		t.Fatalf("10 days off: %+v", ws)
+	}
+}
+
+// Renewing while connected: the node stays Running with a sign-in link, and the QR page shows its code.
+func TestRenewingShowsTheCode(t *testing.T) {
+	st := running(nas)
+	st.AuthURL = "https://login.tailscale.com/a/renew"
+	w := newWorld(t, st)
+	w.app.Reconcile()
+	c, _ := qr.Encode([]byte("https://login.tailscale.com/a/renew"))
+	want := "addr=login.tailscale.com/a/renew\nqr=" + c.Hex() + "\nqrsize=" + strconv.Itoa(c.Size) +
+		"\nnote=Scan to renew Tailscale's sign-in\nbar=warn\n"
+	if got := w.file("q2-tailscale.state"); got != want {
+		t.Fatalf("state %q", got)
 	}
 }

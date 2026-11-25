@@ -112,7 +112,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var appsNote atomic.Value // why HTTPS was chosen but isn't used, for Apps Shared Now
 	appsNote.Store("")
 	go func() {
-		h := pages.Handler(pages.Deps{App: a, Dir: *dir, Logout: n.Logout, Stop: stop, SetOn: a.SetOn, Version: version,
+		h := pages.Handler(pages.Deps{App: a, Dir: *dir, Logout: n.Logout, Reauth: n.Reauth, Stop: stop, SetOn: a.SetOn, Version: version,
 			Restart: func() { again.Store(true); stop() }, Dev: func() bool { return remote.Available(os.Stat) },
 			Shared: func() ([]pages.SharedApp, string) { return sharedApps(n.Status(), apps.Shared(), appsNote.Load().(string)) }})
 		if err := q2spot.Serve(ctx, *socket, h); err != nil {

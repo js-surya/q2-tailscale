@@ -28,6 +28,9 @@ affiliated with or endorsed by Tailscale.
 - **Q2 apps on Tailscale:** open the page of an app running on the Q2, such as EQ Studio, from your
   phone or computer on another network (below). Off unless you turn it on.
 - **Status bar icon:** connected, off or warning.
+- **Renew before the sign-in expires:** a week before the Q2's key expires, its page says so, the
+  status bar icon gets its warning mark, and **Renew Sign-In** asks for a new sign-in by QR code while it
+  stays connected, keeping its name and Tailscale IP.
 - **Follows Wi-Fi:** starts when Wi-Fi connects, stops when it goes (or only when you open it).
 
 ## Security
@@ -74,7 +77,8 @@ affiliated with or endorsed by Tailscale.
 - **Limit what the Q2 can reach** with Tailscale's access rules: allow the Q2's Tailscale IP only your
   music server's port, such as Navidrome's 4533 or Jellyfin's 8096. (A tag would do it too, but a tagged
   Q2 no longer receives Taildrop from your devices.)
-- **Keep key expiry on** for the Q2. Signing in again is a QR code scan.
+- **Keep key expiry on** for the Q2. A week before it expires the app says so, and **Renew Sign-In** is a
+  QR code scan.
 - **Update the app** when the App Store offers an update.
 - **Report a security problem** privately through this repository's
   [Security tab](https://github.com/js-surya/q2-tailscale/security/advisories/new), not in a public

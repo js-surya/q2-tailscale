@@ -41,6 +41,7 @@ type world struct {
 	dir     string
 	stopped atomic.Bool
 	logouts int
+	renews  int
 	now     time.Time
 	taken   map[uint16]bool
 	ons     []bool // each SetOn
@@ -53,6 +54,7 @@ func newWorld(t *testing.T, st node.Status) *world {
 	w := &world{app: &fakeApp{st: st, problems: map[uint16]string{}}, dir: dir, now: time.Unix(1e9, 0), taken: map[uint16]bool{}}
 	w.h = Handler(Deps{App: w.app, Dir: w.dir,
 		Logout:   func(context.Context) error { w.logouts++; return nil },
+		Reauth:   func(context.Context) error { w.renews++; return nil },
 		Stop:     func() { w.stopped.Store(true) },
 		PortFree: func(p uint16) bool { return !w.taken[p] },
 		Now:      func() time.Time { return w.now },
@@ -525,5 +527,38 @@ func TestAppsOnTailscale(t *testing.T) {
 	}
 	if restarts != 2 {
 		t.Fatalf("restarts %d", restarts)
+	}
+}
+
+// Expiring soon: Renew Sign-In on the menu asks for a new sign-in, the node kept; with its link, the
+// menu offers the QR page, as for the first sign-in.
+func TestRenewSignIn(t *testing.T) {
+	st := running(nas)
+	w := newWorld(t, st)
+	st.KeyExpiry = w.now.Add(3 * 24 * time.Hour)
+	w.app.st = st
+	r := w.h("menu", nil)
+	i := slices.IndexFunc(r.Rows, func(r q2spot.Row) bool { return r.URI == "renew" })
+	if i < 0 || r.Rows[i].Kind != "action" || r.Rows[i].Title != "Renew Sign-In" {
+		t.Fatalf("%+v", r.Rows)
+	}
+	if r := w.h("renew", nil); r.Status != "ok" || w.renews != 1 {
+		t.Fatalf("%+v, renews %d", r, w.renews)
+	}
+
+	st.AuthURL = "https://login.tailscale.com/a/renew"
+	w.app.st = st
+	r = w.h("menu", nil)
+	i = slices.IndexFunc(r.Rows, func(r q2spot.Row) bool { return r.URI == "signin" })
+	if i < 0 || r.Rows[i].Kind != "remote" || r.Rows[i].Title != "Renew from Your Phone" {
+		t.Fatalf("%+v", r.Rows)
+	}
+	if slices.ContainsFunc(r.Rows, func(r q2spot.Row) bool { return r.URI == "renew" }) {
+		t.Fatal("Renew Sign-In shown with the code already up")
+	}
+
+	w2 := newWorld(t, running(nas)) // key expiry off
+	if slices.ContainsFunc(w2.h("menu", nil).Rows, func(r q2spot.Row) bool { return r.URI == "renew" }) {
+		t.Fatal("Renew Sign-In without an expiry")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"reflect"
 	"testing"
+	"time"
 
 	"tailscale.com/health"
 	"tailscale.com/ipn/ipnstate"
@@ -118,5 +119,43 @@ func TestATailnetThatRequiresLogsIsNoticed(t *testing.T) {
 	if LogsRequired(nil) || LogsRequired(&health.State{Warnings: map[health.WarnableCode]health.UnhealthyState{
 		"local-log-config-error": {WarnableCode: "local-log-config-error", Text: "The local log is misconfigured: disk full"}}}) {
 		t.Fatal("noticed without the tailnet asking")
+	}
+}
+
+// The node's key expiry, as the admin console sets it: none (key expiry off) is the zero time.
+func TestKeyExpiryFromStatus(t *testing.T) {
+	when := time.Date(2026, 12, 1, 12, 0, 0, 0, time.UTC)
+	got := FromIPN(&ipnstate.Status{BackendState: "Running", Self: &ipnstate.PeerStatus{HostName: "q2-pod", KeyExpiry: &when}})
+	if !got.KeyExpiry.Equal(when) {
+		t.Fatalf("expiry %v", got.KeyExpiry)
+	}
+	if got := FromIPN(&ipnstate.Status{BackendState: "Running", Self: &ipnstate.PeerStatus{HostName: "q2-pod"}}); !got.KeyExpiry.IsZero() {
+		t.Fatalf("no expiry: %v", got.KeyExpiry)
+	}
+}
+
+// ExpiresSoon: within a week, in whole days rounded up; never with key expiry off.
+func TestExpiresSoon(t *testing.T) {
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		in   time.Duration
+		days int
+		ok   bool
+	}{
+		{0, 0, false}, // key expiry off
+		{8 * 24 * time.Hour, 0, false},
+		{7 * 24 * time.Hour, 7, true},
+		{6*24*time.Hour + time.Hour, 7, true},
+		{30 * time.Hour, 2, true},
+		{5 * time.Hour, 1, true},
+	} {
+		st := Status{State: "Running"}
+		if c.in != 0 {
+			st.KeyExpiry = now.Add(c.in)
+		}
+		days, ok := st.ExpiresSoon(now)
+		if days != c.days || ok != c.ok {
+			t.Errorf("in %v: %d %v, want %d %v", c.in, days, ok, c.days, c.ok)
+		}
 	}
 }

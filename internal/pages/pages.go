@@ -33,6 +33,7 @@ type Deps struct {
 	App      AppView
 	Dir      string
 	Logout   func(context.Context) error
+	Reauth   func(context.Context) error // a new sign-in link, connected meanwhile (Renew Sign-In)
 	Stop     func()
 	PortFree func(uint16) bool
 	Now      func() time.Time
@@ -106,7 +107,7 @@ func Handler(d Deps) q2spot.Handler {
 		}
 		switch op {
 		case "menu":
-			return menu(d.App.Status(), d.App.Warnings(), d.App.Received(), toggle(d.Caps(), "power", "Tailscale", !config.LoadSettings(d.Dir).Off))
+			return menu(d.App.Status(), d.App.Warnings(), d.App.Received(), toggle(d.Caps(), "power", "Tailscale", !config.LoadSettings(d.Dir).Off), d.Now())
 		case "power":
 			on := config.LoadSettings(d.Dir).Off // pressed: the other way
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -292,6 +293,16 @@ func Handler(d Deps) q2spot.Handler {
 				return fail("Couldn't save: %v", err)
 			}
 			return say("Restart Tailscale to apply")
+		case "renew":
+			if d.Reauth == nil {
+				return fail("Renewing isn't available")
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := d.Reauth(ctx); err != nil {
+				return fail("Couldn't renew: %v", err)
+			}
+			return say("Now open Renew from Your Phone")
 		case "signout":
 			mu.Lock()
 			now, armed := d.Now(), signOutAt
@@ -401,7 +412,7 @@ func onOff(on bool) string {
 
 // menu is the app's first page: the switch, the state, what Taildrop just brought, sign-in while signed
 // out, then the lists.
-func menu(st node.Status, warnings []node.Warning, received string, power q2spot.Row) q2spot.Reply {
+func menu(st node.Status, warnings []node.Warning, received string, power q2spot.Row, now time.Time) q2spot.Reply {
 	on := power.Subtitle == "on" || power.Subtitle == "On"
 	status := q2spot.Row{Kind: "info"}
 	r := q2spot.Reply{Status: "ok"}
@@ -432,8 +443,15 @@ func menu(st node.Status, warnings []node.Warning, received string, power q2spot
 		}
 
 	}
-	if st.State == "NeedsLogin" {
+	switch {
+	case st.State == "NeedsLogin":
 		r.Rows = append(r.Rows, q2spot.Row{Kind: "remote", URI: "signin", Title: "Sign In from Your Phone", Subtitle: "Scan the QR code"})
+	case st.State == "Running" && st.AuthURL != "": // renewing: the code is up
+		r.Rows = append(r.Rows, q2spot.Row{Kind: "remote", URI: "signin", Title: "Renew from Your Phone", Subtitle: "Scan the QR code"})
+	case st.State == "Running":
+		if _, soon := st.ExpiresSoon(now); soon && on {
+			r.Rows = append(r.Rows, q2spot.Row{Kind: "action", URI: "renew", Title: "Renew Sign-In", Subtitle: "Keeps this Q2 on your tailnet"})
+		}
 	}
 	r.Rows = append(r.Rows,
 		q2spot.Row{Kind: "list", URI: "machines", Title: "Machines", Subtitle: fmt.Sprintf("%d on the tailnet", len(st.Peers))},

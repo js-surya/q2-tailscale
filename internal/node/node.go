@@ -45,6 +45,26 @@ type Status struct {
 	LogsRequired         bool // the tailnet requires logs, which are off: Tailscale stopped the node
 	CertDomain           string         // the node's HTTPS name (q2-pod.<tailnet>.ts.net), "" while HTTPS is off for the tailnet
 	SelfUser             tailcfg.UserID // the owner: whose devices may reach the Q2's app pages
+	KeyExpiry            time.Time      // when the sign-in expires; zero with key expiry off for the Q2
+}
+
+// soon is how long before the sign-in expires the app warns: time to renew it before a trip.
+const soon = 7 * 24 * time.Hour
+
+// ExpiresSoon is whether the sign-in expires within a week, and in how many days, rounded up (1 for
+// later today). Never with key expiry off.
+func (s Status) ExpiresSoon(now time.Time) (days int, ok bool) {
+	if s.KeyExpiry.IsZero() {
+		return 0, false
+	}
+	left := s.KeyExpiry.Sub(now)
+	if left > soon {
+		return 0, false
+	}
+	if left <= 0 {
+		return 0, true
+	}
+	return int((left + 24*time.Hour - 1) / (24 * time.Hour)), true
 }
 
 // Warning is one of Tailscale's health warnings, as its apps show it.
@@ -124,6 +144,7 @@ type Node interface {
 	Updates() <-chan struct{} // a value after each change of Status
 	Dial(ctx context.Context, network, addr string) (net.Conn, error)
 	Logout(ctx context.Context) error              // signs out, then asks for a new sign-in link
+	Reauth(ctx context.Context) error              // asks for a new sign-in link, signed in and connected meanwhile
 	SetRunning(ctx context.Context, on bool) error // connects or disconnects, signed in either way
 	Close() error
 }
@@ -152,6 +173,9 @@ func FromIPN(st *ipnstate.Status) Status {
 		}
 		out.SelfIP = ipv4(st.Self.TailscaleIPs)
 		out.SelfUser = st.Self.UserID
+		if st.Self.KeyExpiry != nil {
+			out.KeyExpiry = *st.Self.KeyExpiry
+		}
 	}
 	if len(st.CertDomains) > 0 {
 		out.CertDomain = strings.ToLower(st.CertDomains[0])
@@ -334,6 +358,18 @@ func (n *TSNet) Logout(ctx context.Context) error {
 		return err
 	}
 	if err := lc.Logout(ctx); err != nil {
+		return err
+	}
+	err = lc.StartLoginInteractive(ctx)
+	n.refresh(ctx)
+	return err
+}
+
+// Reauth is tailscale up --force-reauth: a new sign-in link while the node stays connected, so a sign-in
+// about to expire is renewed and the Q2 keeps its name and Tailscale IP.
+func (n *TSNet) Reauth(ctx context.Context) error {
+	lc, err := n.srv.LocalClient()
+	if err != nil {
 		return err
 	}
 	err = lc.StartLoginInteractive(ctx)
