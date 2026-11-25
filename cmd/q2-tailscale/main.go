@@ -40,7 +40,7 @@ import (
 	"tailscale.com/logtail"
 )
 
-const version = "q2-v0.7"
+const version = "q2-v0.8"
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
