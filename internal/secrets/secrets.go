@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"q2-tailscale/internal/vault"
 )
@@ -52,6 +53,9 @@ type Client struct{}
 func (Client) Get() ([]byte, error) { return vault.Get() }
 func (Client) Put(b []byte) error   { return vault.Put(b) }
 
+// VaultInstalled is whether the Vault's program is on the card.
+func VaultInstalled() bool { return exists(vault.Installed) }
+
 // Keeper moves the secrets into the Vault and keeps them in step.
 type Keeper struct {
 	Vault Vault
@@ -59,6 +63,12 @@ type Keeper struct {
 	Keys  string // the login's internal folder, for Marker
 	Tmp   string // where the RAM folder goes (/tmp)
 	Logf  func(string, ...any)
+	// Installed reports whether the Vault is on the card; Wait is how long to wait at start for an
+	// installed Vault that isn't answering yet (older firmware may start it after Tailscale); Sleep is
+	// time.Sleep (a fake in tests).
+	Installed func() bool
+	Wait      time.Duration
+	Sleep     func(time.Duration)
 
 	ram      string // the RAM folder, "" when Tailscale's folder is Card
 	restored bool   // the Vault's copy has been read (or there was none)
@@ -72,8 +82,20 @@ func usable(err error) bool { return err == nil || errors.Is(err, vault.ErrNone)
 // Start chooses Tailscale's folder and returns it: the RAM folder with the secrets from the Vault, or
 // the card's state folder as before when there's no Vault to use.
 func (k *Keeper) Start() string {
-	marked := exists(filepath.Join(k.Keys, Marker))
+	marker := filepath.Join(k.Keys, Marker)
+	marked := exists(marker)
+	if marked && !k.Installed() {
+		// The Vault was removed (its key with it): back to the card, as before, so a certificate got
+		// from now on is kept rather than asked for again at every start.
+		os.Remove(marker)
+		k.Logf("secrets: the Vault was removed; keeping them on the card again")
+		return k.Card
+	}
 	b, err := k.Vault.Get()
+	for waited := time.Duration(0); marked && !usable(err) && waited < k.Wait; waited += time.Second {
+		k.Sleep(time.Second) // the secrets are there: wait for it rather than start without them
+		b, err = k.Vault.Get()
+	}
 	if !marked && !usable(err) {
 		return k.Card // no Vault in use: as before
 	}

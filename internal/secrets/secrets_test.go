@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"q2-tailscale/internal/vault"
 )
@@ -48,6 +49,8 @@ type world struct {
 	card, keys, tmp string
 	v               *fakeVault
 	k               *Keeper
+	removed         bool          // the Vault's program gone from the card
+	slept, upAfter  time.Duration // time "slept"; the Vault answers once slept reaches upAfter (0: never)
 }
 
 func newWorld(t *testing.T) *world {
@@ -64,7 +67,14 @@ func newWorld(t *testing.T) *world {
 }
 
 func (w *world) keeper(t *testing.T) *Keeper {
-	return &Keeper{Vault: w.v, Card: w.card, Keys: w.keys, Tmp: w.tmp, Logf: t.Logf}
+	return &Keeper{Vault: w.v, Card: w.card, Keys: w.keys, Tmp: w.tmp, Logf: t.Logf,
+		Installed: func() bool { return !w.removed }, Wait: 20 * time.Second,
+		Sleep: func(d time.Duration) {
+			w.slept += d
+			if w.upAfter > 0 && w.slept >= w.upAfter {
+				w.v.err = nil
+			}
+		}}
 }
 
 func put(t *testing.T, dir, name, data string) {
@@ -278,5 +288,56 @@ func TestEncodingIsStable(t *testing.T) {
 	m := map[string][]byte{"certs/b": []byte("2"), LogConf: []byte("1"), "certs/a": []byte("3")}
 	if !bytes.Equal(encode(m), encode(map[string][]byte{"certs/a": []byte("3"), "certs/b": []byte("2"), LogConf: []byte("1")})) {
 		t.Fatal("same files, different bytes")
+	}
+}
+
+func TestAVaultStartedLateIsWaitedFor(t *testing.T) {
+	w := newWorld(t)
+	w.cardSecrets(t)
+	w.k.Start()
+	w.k.Stop()
+
+	w.v.err, w.upAfter = vault.ErrNoVault, 5*time.Second // older firmware: the Vault starts 5 s after
+	k := w.keeper(t)
+	ram := k.Start()
+	if read(ram, "certs/q2.ts.net.key") != "key" {
+		t.Fatal("didn't wait for the Vault: Tailscale would ask for a new certificate")
+	}
+	if w.slept != 5*time.Second {
+		t.Errorf("waited %v", w.slept)
+	}
+}
+
+func TestAVaultThatNeverAnswersIsWaitedForOnlySoLong(t *testing.T) {
+	w := newWorld(t)
+	w.cardSecrets(t)
+	w.k.Start()
+	w.k.Stop()
+	w.v.err = vault.ErrNoVault
+	if ram := w.keeper(t).Start(); ram == w.card || w.slept != 20*time.Second {
+		t.Fatalf("folder %q after %v", ram, w.slept)
+	}
+}
+
+func TestNoWaitWithoutTheMarker(t *testing.T) {
+	w := newWorld(t)
+	w.v.err = vault.ErrNoVault
+	w.k.Start()
+	if w.slept != 0 {
+		t.Fatalf("waited %v with nothing in the Vault", w.slept)
+	}
+}
+
+func TestARemovedVaultGoesBackToTheCard(t *testing.T) {
+	w := newWorld(t)
+	w.cardSecrets(t)
+	w.k.Start()
+	w.k.Stop()
+	w.removed, w.v.err = true, vault.ErrNoVault
+	if got := w.keeper(t).Start(); got != w.card {
+		t.Fatalf("folder %q, want the card's", got)
+	}
+	if exists(filepath.Join(w.keys, Marker)) || w.slept != 0 {
+		t.Fatal("marker kept or waited for a removed Vault")
 	}
 }

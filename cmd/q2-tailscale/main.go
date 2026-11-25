@@ -103,7 +103,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// The certificate and the log key: in the Vault when there is one (Tailscale's folder then in RAM),
 	// else on the card as before; the login stays in internal storage either way.
 	sec := &secrets.Keeper{Vault: secrets.Client{}, Card: stateDir, Keys: *keysDir, Tmp: filepath.Dir(*statePath),
-		Logf: logf}
+		Logf: logf, Installed: secrets.VaultInstalled, Wait: 20 * time.Second, Sleep: time.Sleep}
 	tsDir := sec.Start()
 	syncDone := make(chan struct{})
 	go func() {
