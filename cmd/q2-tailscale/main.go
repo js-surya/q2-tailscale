@@ -29,6 +29,7 @@ import (
 	"q2-tailscale/internal/q2spot"
 	"q2-tailscale/internal/relay"
 	"q2-tailscale/internal/remote"
+	"q2-tailscale/internal/secrets"
 	"q2-tailscale/internal/share"
 	"q2-tailscale/internal/taildrop"
 
@@ -99,7 +100,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	n := node.NewTSNet(stateDir, settings.Hostname, keys, tailscaleLogf(logf, *tsDebug))
+	// The certificate and the log key: in the Vault when there is one (Tailscale's folder then in RAM),
+	// else on the card as before; the login stays in internal storage either way.
+	sec := &secrets.Keeper{Vault: secrets.Client{}, Card: stateDir, Keys: *keysDir, Tmp: filepath.Dir(*statePath),
+		Logf: logf}
+	tsDir := sec.Start()
+	syncDone := make(chan struct{})
+	go func() {
+		defer close(syncDone)
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				sec.Sync()
+			}
+		}
+	}()
+	stopSecrets := func() { stop(); <-syncDone; sec.Stop() }
+	n := node.NewTSNet(tsDir, settings.Hostname, keys, tailscaleLogf(logf, *tsDebug))
 	a := &app.App{Node: n, Loop: &loopback.Manager{}, Relay: &relay.Relay{Dial: n.Dial}, Dir: *dir,
 		ResolvPath: *resolv, StatePath: *statePath, DNSAddr: *dns, Logf: logf}
 	if keysErr != nil && where.Path != filepath.Join(*keysDir, keystore.File) {
@@ -162,7 +183,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 			apps.Run(ctx)
 		}()
 	}
-	if err := a.Run(ctx); err != nil {
+	err = a.Run(ctx)
+	stopSecrets()
+	if err != nil {
 		logf("%v", err)
 		fmt.Fprintln(stderr, err)
 		return 1

@@ -48,6 +48,13 @@ affiliated with or endorsed by Tailscale.
 - **Your login stays off the card.** The node's keys are in the Q2's internal storage
   (`/mnt/data/apps/tailscale`), readable only by root. A card taken out, copied, or opened over USB or
   Wi-Fi transfer holds no way into your tailnet.
+- **With the [Vault](https://github.com/js-surya/q2-vault) installed, the other secrets leave the card
+  too.** The HTTPS certificate's private keys and the log key are sealed in the Vault (encrypted on the
+  card, its one key in internal storage), and Tailscale's working folder is in RAM, root only: the
+  netmap cache (your machines' names and addresses) is never written to the card. Files from Taildrop
+  still arrive on the card. The first start with the Vault moves what's on the card into it, checks the
+  Vault gives it back, then deletes it from the card. Without the Vault, nothing changes. The Vault
+  stays running while Tailscale runs (about 5 MB of memory).
 - **Nothing is opened to the local network.** The name server and your forwards listen on `127.0.0.1`
   only, and your machines' Tailscale IPs answer only programs on the Q2.
 - **Nothing is served to your tailnet** but Taildrop, which takes files only from your own devices,
