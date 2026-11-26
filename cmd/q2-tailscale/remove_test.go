@@ -86,3 +86,20 @@ func TestNoWatchOnAShallowPath(t *testing.T) {
 		t.Error("watch for an app folder that is the root")
 	}
 }
+
+// CP-138: a card pulled during the watch: the folder can't be read, but /proc/mounts still lists the
+// card until it's unmounted. That is no Remove, so the login stays.
+func TestAPulledCardKeepsTheLogin(t *testing.T) {
+	dir, keys, mounts := removeFixture(t, true)
+	card := filepath.Dir(dir)
+	if err := os.Chmod(card, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(card, 0o755) })
+	if err := watchRemove(dir, keys, mounts, 3, "0.05").Run(); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(filepath.Join(keys, "tailscaled.state")) {
+		t.Fatal("login deleted with the card pulled (unreadable, still listed in mounts)")
+	}
+}

@@ -12,11 +12,14 @@ import (
 // but not the login it keeps in internal storage: so, after a stop, this watches the card folder for
 // tries×gap seconds, and once it's gone with the card still mounted (a Remove, not the card taken out
 // or handed to USB storage, which take the folder with them) deletes the login's folder too.
+//
+// A card pulled during the watch makes the folder look gone while /proc/mounts still lists the card
+// until it's unmounted, so the card must also still be readable, and the folder still gone after.
 const removeScript = `dir=$1 card=$2 keys=$3 mounts=$4 tries=$5 gap=$6
 i=0
 while [ "$i" -lt "$tries" ]; do
 	if [ ! -e "$dir" ]; then
-		grep -q " $card " "$mounts" && rm -rf "$keys"
+		ls -a "$card" >/dev/null 2>&1 && grep -q " $card " "$mounts" && [ ! -e "$dir" ] && rm -rf "$keys"
 		exit 0
 	fi
 	sleep "$gap"
